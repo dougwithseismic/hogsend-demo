@@ -1,6 +1,6 @@
 [build]
 buildCommand = "pnpm build"
-watchPatterns = ["src/**", "migrations/**", "package.json", "pnpm-lock.yaml", "railway.toml"]
+watchPatterns = ["src/**", "migrations/**", "package.json", "pnpm-lock.yaml", "tsup.config.ts", "tsconfig.json", "railway.toml"]
 
 [deploy]
 # Two-track migrate: engine track first, then this repo's client track.

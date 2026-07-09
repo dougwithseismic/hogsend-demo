@@ -1,6 +1,6 @@
 [build]
 buildCommand = "pnpm build"
-watchPatterns = ["src/**", "package.json", "pnpm-lock.yaml", "railway.worker.toml"]
+watchPatterns = ["src/**", "package.json", "pnpm-lock.yaml", "tsup.config.ts", "tsconfig.json", "railway.worker.toml"]
 
 [deploy]
 # No healthcheck — the worker has no HTTP port. Migrations are owned by the API
