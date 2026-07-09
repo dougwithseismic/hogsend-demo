@@ -15,38 +15,38 @@ importers:
         specifier: ^1.22.3
         version: 1.24.3(@grpc/grpc-js@1.14.4)(@opentelemetry/api@1.9.1)(zod@4.4.3)
       '@hogsend/cli':
-        specifier: ^0.39.0
-        version: 0.39.0(@grpc/grpc-js@1.14.4)(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9))(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.2)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))
+        specifier: ^0.40.0
+        version: 0.40.0(@grpc/grpc-js@1.14.4)(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9))(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.2)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))
       '@hogsend/client':
-        specifier: ^0.39.0
-        version: 0.39.0
+        specifier: ^0.40.0
+        version: 0.40.0
       '@hogsend/core':
-        specifier: ^0.39.0
-        version: 0.39.0(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9)
+        specifier: ^0.40.0
+        version: 0.40.0(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9)
       '@hogsend/db':
-        specifier: ^0.39.0
-        version: 0.39.0(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9))
+        specifier: ^0.40.0
+        version: 0.40.0(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9))
       '@hogsend/email':
-        specifier: ^0.39.0
-        version: 0.39.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        specifier: ^0.40.0
+        version: 0.40.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@hogsend/engine':
-        specifier: ^0.39.0
-        version: 0.39.0(@grpc/grpc-js@1.14.4)(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(drizzle-kit@0.31.10)(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.2)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))
+        specifier: ^0.40.0
+        version: 0.40.0(@grpc/grpc-js@1.14.4)(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(drizzle-kit@0.31.10)(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.2)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))
       '@hogsend/plugin-discord':
-        specifier: ^0.39.0
-        version: 0.39.0(@grpc/grpc-js@1.14.4)(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(drizzle-kit@0.31.10)(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.2)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))
+        specifier: ^0.40.0
+        version: 0.40.0(@grpc/grpc-js@1.14.4)(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(drizzle-kit@0.31.10)(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.2)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))
       '@hogsend/plugin-posthog':
-        specifier: ^0.39.0
-        version: 0.39.0(@opentelemetry/api@1.9.1)(ioredis@5.11.1)(kysely@0.29.3)(postgres@3.4.9)
+        specifier: ^0.40.0
+        version: 0.40.0(@opentelemetry/api@1.9.1)(ioredis@5.11.1)(kysely@0.29.3)(postgres@3.4.9)
       '@hogsend/plugin-resend':
-        specifier: ^0.39.0
-        version: 0.39.0(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        specifier: ^0.40.0
+        version: 0.40.0(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@hogsend/plugin-telegram':
-        specifier: ^0.39.0
-        version: 0.39.0(@grpc/grpc-js@1.14.4)(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(drizzle-kit@0.31.10)(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.2)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))
+        specifier: ^0.40.0
+        version: 0.40.0(@grpc/grpc-js@1.14.4)(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(drizzle-kit@0.31.10)(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.2)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))
       '@hogsend/studio':
-        specifier: ^0.39.0
-        version: 0.39.0(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9))(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))(zod@4.4.3)
+        specifier: ^0.40.0
+        version: 0.40.0(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9))(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))(zod@4.4.3)
       '@hono/node-server':
         specifier: ^2.0.4
         version: 2.0.8(hono@4.12.28)
@@ -1036,60 +1036,60 @@ packages:
       prom-client:
         optional: true
 
-  '@hogsend/cli@0.39.0':
-    resolution: {integrity: sha512-d9fzS1I4QXj1W/fedVwtv1dqJLm6wpSCz5CmO1wN0wMY8nqgQBWDpr2vjaz3VBA9cd78x6SLmThEdizJuP2SgQ==}
+  '@hogsend/cli@0.40.0':
+    resolution: {integrity: sha512-TDeW2w3N2/qoLWs6DweTjW2qPLdQoGNKdQNPivVY7Tt9hu7D7fMi0tQfnCiF7vZaJPSxCD1BBxc4nHdqb6VXOA==}
     engines: {node: '>=22'}
     hasBin: true
 
-  '@hogsend/client@0.39.0':
-    resolution: {integrity: sha512-NrdE8iodzgd3iDnl1WeY9Br4mKo1yKPsar3Fjq7noV+AvYfz6wwCVTWnuPQVZ2MMeem3beUz7hry4ot4HGHDgw==}
+  '@hogsend/client@0.40.0':
+    resolution: {integrity: sha512-BS261G08h41iYIQlgPqXbapdFC1OXpBtxmr19mI6AogTtCXkskFHAfXlHAH/ejVIwmq/YUf5QV755YS3SbZfSg==}
     engines: {node: '>=22'}
 
-  '@hogsend/core@0.39.0':
-    resolution: {integrity: sha512-4oN+Sr8tFG4FVSxzUr4Lt4Pk1fkjdfaTJ0g77hkpWLRTauO/sEpqfQWplkMEtfaZRjj4tOOqTC8bSebn1pjTcA==}
+  '@hogsend/core@0.40.0':
+    resolution: {integrity: sha512-fCL6GpTWDRdvoaAPSdz3Bma8CcDLKDjKialgRik+DthZTluqc1rB8M04I063oMTcqwGOlz0OVROQhfynoj6JEA==}
 
-  '@hogsend/db@0.39.0':
-    resolution: {integrity: sha512-wynEd6B7IRrARo98ekhZyLSy4yNejmRbb44a05yvGy9UtmNm8Unp0Z11BkJL8dPDb+tV0Hc8ByOZL2eigMArBw==}
+  '@hogsend/db@0.40.0':
+    resolution: {integrity: sha512-plm+rVpwmswkZ9eDO9CCqLM//DSFXKUDmRdrLJmLB5RI8FgMg+B0xPlGkBDCfoi/WL679rmq4wdjd6wTLFgIZQ==}
     peerDependencies:
       drizzle-orm: '>=0.45.0'
 
-  '@hogsend/email@0.39.0':
-    resolution: {integrity: sha512-stLOfmDyvIkEjW2hSgVEylRWUFv1IWpPEW898OzauyR/jnQZNrRsKJS3f5LkoXbT7UGGlPCE9h5STiMZzOtQ0Q==}
+  '@hogsend/email@0.40.0':
+    resolution: {integrity: sha512-unBLYt6nbGjaGEu1uSZXGbmfSAvMxtmVAIYy/3H33T4lQi/Hw04qBD9Z8ynZwML6aIcXDUzH3E8ABxQ3IVDDTg==}
     peerDependencies:
       react: ^19.0.0
       react-dom: ^19.0.0
 
-  '@hogsend/engine@0.39.0':
-    resolution: {integrity: sha512-mC8/Xb+QSOt4P4Ir5lXejokf9QfcwL3nABWdSYLCIkmACfPtqm9PqpWsUZBk2Ie/HQqiZNTKZchmrUu7UuFwog==}
+  '@hogsend/engine@0.40.0':
+    resolution: {integrity: sha512-N2rlklBwI+1ngebDqSokikYLpCfVqiAM8luPPtiWcP+RgVeAc805bs2ORGymZaSE37Gqp5boU1NNw4Pt5rF9Xw==}
     engines: {node: '>=22'}
 
-  '@hogsend/plugin-discord@0.39.0':
-    resolution: {integrity: sha512-PXVa00705CENNohcKkxra0qKVeaU8pROsYk2uGXq0ifrYhtmY2axF64+2F9tHeX/i35vgJ4CIdyHq/WwK5io5Q==}
+  '@hogsend/plugin-discord@0.40.0':
+    resolution: {integrity: sha512-z60wl2knzVhAQBC2e0Vo6/azeKKQoNaB5W/u8pxhT2vjuXra64I4uS5EBPkvUXERSgvydt4m3u5Y92MjMNkZqQ==}
     peerDependencies:
       discord.js: '>=14.0.0'
     peerDependenciesMeta:
       discord.js:
         optional: true
 
-  '@hogsend/plugin-posthog@0.39.0':
-    resolution: {integrity: sha512-b+SYg+MNMm7L3Z5oQlgbsHvurnvikJ+pro5QSWJI8ZT0QqSGrIyr2u1CkE7LZ3gFkRW2p+NnQoNi9d6JAugbCA==}
+  '@hogsend/plugin-posthog@0.40.0':
+    resolution: {integrity: sha512-RqOvCXuKIjsHzIgbuL/LVU+ZB0C+/pjEk8ca93h1YH1PAbVzSeuXykSIB/NGXzFXn0aAQoI9X6y30VDmgzRlfA==}
     peerDependencies:
       ioredis: '>=5.0.0'
     peerDependenciesMeta:
       ioredis:
         optional: true
 
-  '@hogsend/plugin-postmark@0.39.0':
-    resolution: {integrity: sha512-+zpw6D+N0uRm9q7tnbYh1eu0LBViaYrOJoTtojQHYXMf4QF6kodE4M23oLHSD10Hd6QF9ypGLVvmvlc5VwQA3g==}
+  '@hogsend/plugin-postmark@0.40.0':
+    resolution: {integrity: sha512-zXIKw4V5XvTyBUHFgcxPRaegDJBmzt7wkTlsPKap2mY7POa9KZjpuzRljjld3ur/h69Iw0qCThMz+L+6OBVUCA==}
 
-  '@hogsend/plugin-resend@0.39.0':
-    resolution: {integrity: sha512-e6e2Tlv+anhCjKZNuc7cAsJwm09FfPINIUzuXi50dYsckhR8UgdiHZG5iAMqJJnMWQ+XnP0pod1VwU0++uSagg==}
+  '@hogsend/plugin-resend@0.40.0':
+    resolution: {integrity: sha512-NKm5RLS2uxQlUgi+2VAVK+cH+5SYF5gDI7JtyBpjNErAMKBrSwiWRV9uOlVzj/qmw+rkihmwqILADxlYiEiiBQ==}
 
-  '@hogsend/plugin-telegram@0.39.0':
-    resolution: {integrity: sha512-UW9H0IwfHC1a3axZWKQNXACU/rw/2LugfKof7tWGxGrpRDgmm+XEf5fk8U9mLKP1367GYX8s5w13R92Rb4P1ow==}
+  '@hogsend/plugin-telegram@0.40.0':
+    resolution: {integrity: sha512-BoXJb6Rg6A4lXl/osLetM4dwmoc44wlA5RPMNWUiDGLV9/enVuoHFu5s1ee3SqTPyF7162isZl1V7c8l9XpYqA==}
 
-  '@hogsend/studio@0.39.0':
-    resolution: {integrity: sha512-Dt//tmitDaVft9LHiwWFdNVf2JU65c3LD7gjkD8RVjCcX4L2D8XiPv+Lr5w8+hCoMEqGWHpzH0L1lfzz0lLfAw==}
+  '@hogsend/studio@0.40.0':
+    resolution: {integrity: sha512-YqY0QHhmdRu2VDRMxzEFjs1u2RGbpUBrh0kTQz6tUz5bbOd8qF0n7NIoS8C2ZMqmPXJhcXI3h3hj3qoTEE6FTQ==}
     engines: {node: '>=22'}
 
   '@hono/node-server@2.0.8':
@@ -4016,11 +4016,11 @@ snapshots:
       - debug
       - supports-color
 
-  '@hogsend/cli@0.39.0(@grpc/grpc-js@1.14.4)(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9))(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.2)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))':
+  '@hogsend/cli@0.40.0(@grpc/grpc-js@1.14.4)(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9))(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.2)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))':
     dependencies:
       '@clack/prompts': 1.7.0
-      '@hogsend/db': 0.39.0(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9))
-      '@hogsend/engine': 0.39.0(@grpc/grpc-js@1.14.4)(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(drizzle-kit@0.31.10)(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.2)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))
+      '@hogsend/db': 0.40.0(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9))
+      '@hogsend/engine': 0.40.0(@grpc/grpc-js@1.14.4)(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(drizzle-kit@0.31.10)(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.2)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))
       better-auth: 1.6.23(@opentelemetry/api@1.9.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))
       papaparse: 5.5.4
       picocolors: 1.1.1
@@ -4085,13 +4085,13 @@ snapshots:
       - vitest
       - vue
 
-  '@hogsend/client@0.39.0':
+  '@hogsend/client@0.40.0':
     dependencies:
       svix: 1.96.1
 
-  '@hogsend/core@0.39.0(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9)':
+  '@hogsend/core@0.40.0(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9)':
     dependencies:
-      '@hogsend/db': 0.39.0(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9))
+      '@hogsend/db': 0.40.0(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9))
       '@js-temporal/polyfill': 0.5.1
       drizzle-orm: 0.45.2(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9)
       iana-db-timezones: 0.3.0
@@ -4127,24 +4127,24 @@ snapshots:
       - sql.js
       - sqlite3
 
-  '@hogsend/db@0.39.0(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9))':
+  '@hogsend/db@0.40.0(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9))':
     dependencies:
       drizzle-orm: 0.45.2(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9)
       postgres: 3.4.9
 
-  '@hogsend/email@0.39.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@hogsend/email@0.40.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
 
-  '@hogsend/engine@0.39.0(@grpc/grpc-js@1.14.4)(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(drizzle-kit@0.31.10)(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.2)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))':
+  '@hogsend/engine@0.40.0(@grpc/grpc-js@1.14.4)(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(drizzle-kit@0.31.10)(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.2)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))':
     dependencies:
       '@hatchet-dev/typescript-sdk': 1.24.3(@grpc/grpc-js@1.14.4)(@opentelemetry/api@1.9.1)(zod@4.4.3)
-      '@hogsend/core': 0.39.0(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9)
-      '@hogsend/db': 0.39.0(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9))
-      '@hogsend/email': 0.39.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
-      '@hogsend/plugin-posthog': 0.39.0(@opentelemetry/api@1.9.1)(ioredis@5.11.1)(kysely@0.29.3)(postgres@3.4.9)
-      '@hogsend/plugin-resend': 0.39.0(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@hogsend/core': 0.40.0(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9)
+      '@hogsend/db': 0.40.0(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9))
+      '@hogsend/email': 0.40.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@hogsend/plugin-posthog': 0.40.0(@opentelemetry/api@1.9.1)(ioredis@5.11.1)(kysely@0.29.3)(postgres@3.4.9)
+      '@hogsend/plugin-resend': 0.40.0(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@hono/node-server': 2.0.8(hono@4.12.28)
       '@hono/zod-openapi': 1.4.0(hono@4.12.28)(zod@4.4.3)
       '@openrouter/ai-sdk-provider': 2.10.0(ai@6.0.221(zod@4.4.3))(zod@4.4.3)
@@ -4165,7 +4165,7 @@ snapshots:
       winston: 3.19.0
       zod: 4.4.3
     optionalDependencies:
-      '@hogsend/plugin-postmark': 0.39.0(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9)
+      '@hogsend/plugin-postmark': 0.40.0(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9)
     transitivePeerDependencies:
       - '@anthropic-ai/claude-agent-sdk'
       - '@aws-sdk/client-rds-data'
@@ -4226,9 +4226,9 @@ snapshots:
       - vitest
       - vue
 
-  '@hogsend/plugin-discord@0.39.0(@grpc/grpc-js@1.14.4)(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(drizzle-kit@0.31.10)(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.2)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))':
+  '@hogsend/plugin-discord@0.40.0(@grpc/grpc-js@1.14.4)(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(drizzle-kit@0.31.10)(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.2)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))':
     dependencies:
-      '@hogsend/engine': 0.39.0(@grpc/grpc-js@1.14.4)(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(drizzle-kit@0.31.10)(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.2)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))
+      '@hogsend/engine': 0.40.0(@grpc/grpc-js@1.14.4)(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(drizzle-kit@0.31.10)(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.2)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))
     transitivePeerDependencies:
       - '@anthropic-ai/claude-agent-sdk'
       - '@aws-sdk/client-rds-data'
@@ -4289,9 +4289,9 @@ snapshots:
       - vitest
       - vue
 
-  '@hogsend/plugin-posthog@0.39.0(@opentelemetry/api@1.9.1)(ioredis@5.11.1)(kysely@0.29.3)(postgres@3.4.9)':
+  '@hogsend/plugin-posthog@0.40.0(@opentelemetry/api@1.9.1)(ioredis@5.11.1)(kysely@0.29.3)(postgres@3.4.9)':
     dependencies:
-      '@hogsend/core': 0.39.0(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9)
+      '@hogsend/core': 0.40.0(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9)
       posthog-node: 5.40.0
     optionalDependencies:
       ioredis: 5.11.1
@@ -4327,9 +4327,9 @@ snapshots:
       - sql.js
       - sqlite3
 
-  '@hogsend/plugin-postmark@0.39.0(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9)':
+  '@hogsend/plugin-postmark@0.40.0(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9)':
     dependencies:
-      '@hogsend/core': 0.39.0(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9)
+      '@hogsend/core': 0.40.0(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9)
       postmark: 4.0.7
     transitivePeerDependencies:
       - '@aws-sdk/client-rds-data'
@@ -4365,10 +4365,10 @@ snapshots:
       - supports-color
     optional: true
 
-  '@hogsend/plugin-resend@0.39.0(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@hogsend/plugin-resend@0.40.0(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
-      '@hogsend/core': 0.39.0(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9)
-      '@hogsend/email': 0.39.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@hogsend/core': 0.40.0(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9)
+      '@hogsend/email': 0.40.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       resend: 6.17.2(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))
       svix: 1.96.1
     transitivePeerDependencies:
@@ -4405,9 +4405,9 @@ snapshots:
       - sql.js
       - sqlite3
 
-  '@hogsend/plugin-telegram@0.39.0(@grpc/grpc-js@1.14.4)(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(drizzle-kit@0.31.10)(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.2)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))':
+  '@hogsend/plugin-telegram@0.40.0(@grpc/grpc-js@1.14.4)(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(drizzle-kit@0.31.10)(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.2)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))':
     dependencies:
-      '@hogsend/engine': 0.39.0(@grpc/grpc-js@1.14.4)(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(drizzle-kit@0.31.10)(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.2)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))
+      '@hogsend/engine': 0.40.0(@grpc/grpc-js@1.14.4)(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(drizzle-kit@0.31.10)(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.2)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))
     transitivePeerDependencies:
       - '@anthropic-ai/claude-agent-sdk'
       - '@aws-sdk/client-rds-data'
@@ -4468,7 +4468,7 @@ snapshots:
       - vitest
       - vue
 
-  '@hogsend/studio@0.39.0(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9))(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))(zod@4.4.3)':
+  '@hogsend/studio@0.40.0(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9))(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))(zod@4.4.3)':
     dependencies:
       '@ai-sdk/react': 3.0.223(react@19.2.7)(zod@4.4.3)
       '@dagrejs/dagre': 3.0.0
