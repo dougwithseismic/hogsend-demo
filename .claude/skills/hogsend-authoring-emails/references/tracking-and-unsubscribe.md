@@ -1,0 +1,195 @@
+# Tracking & unsubscribe — what happens automatically on every send
+
+This is co-located with email authoring on purpose: link-click tracking, open
+tracking, preference checks, and unsubscribe are **automatic on every send**.
+The engine's `createTrackedMailer` owns the whole pipeline; the email provider
+(`createResendProvider`) is just the dumb wire. You author the `.tsx`; the engine
+does the rest. You should NOT call any of these helpers yourself — this reference
+explains what runs so you author components that leave room for it.
+
+## The send pipeline (engine-owned, runs on `send` / `sendEmail`)
+
+```
+emailService.send({ template, props, to, ... })   // or sendEmail({...}) in a journey
+        │
+        ▼  createTrackedMailer.send → sendTrackedEmail (the DB-backed path)
+  1. preference / suppression check, then frequency cap
+        (both skipped when skipPreferenceCheck is set)
+  2. getTemplate(key, props, registry) → resolve element + subject + category
+  3. insert email_sends row  → gives the send a stable emailSendId (status "queued")
+  4. renderToHtml(element) ALWAYS (HTML-only wire — no React crosses the provider),
+     then prepareTrackedHtml(html, emailSendId, baseUrl, db):
+        • rewriteLinks()    — every <a href="https?://…"> → /v1/t/c/:linkId
+        • injectOpenPixel() — <img src="/v1/t/o/:emailSendId"> before </body>
+        (rewrite/pixel only when baseUrl + prepareTrackedHtml are present; else send the plain rendered HTML)
+  5. provider.send(...)     — the provider gets the already-rendered HTML
+  6. update email_sends → messageId + status "sent" (or "failed" on throw)
+```
+
+Tracking comes along regardless of which provider you supply, because steps 2–4
+live in the engine, not the provider. The tracking domain is `options.baseUrl`
+(threaded from `config.baseUrl`, i.e. `API_PUBLIC_URL`).
+
+## Link-click tracking
+
+`rewriteLinks` (engine `lib/tracking.ts`) scans the rendered HTML for
+`href="https://…"`, deduplicates the URLs, bulk-inserts one `tracked_links` row
+per unique URL, then single-pass replaces each href with
+`{API_PUBLIC_URL}/v1/t/c/{linkId}`. At click time:
+
+- `GET /v1/t/c/:id` records a `link_clicks` row (IP + user-agent), increments
+  `tracked_links.click_count`, sets `email_sends.clicked_at` (first click only,
+  `WHERE clicked_at IS NULL`), then **302-redirects to the original URL**.
+- After responding it fire-and-forgets an `email.link_clicked` event (props:
+  `emailSendId`, `templateKey`, `linkUrl`, `linkId`) into PostHog + the ingest
+  pipeline, so journeys can branch on it and `exitOn` can fire. It ALSO emits the
+  outbound-catalog `email.clicked` event, which fans out durably to every
+  subscribed DESTINATION — **per-hit, not first-touch** (every click is delivered,
+  unlike the first-only `clicked_at` column).
+
+Authoring implication: use real `<a href>` / react-email `Button`/`Link` with
+absolute `https://` URLs and they're tracked automatically. Non-HTTP links
+(`mailto:`, `tel:`) are left alone — the regex only matches `https?://`.
+
+## Open tracking
+
+`injectOpenPixel` appends a 1×1 GIF `<img src="{API_PUBLIC_URL}/v1/t/o/{emailSendId}">`
+just before `</body>` (so always compose inside `Layout`, which emits a proper
+`<body>`). At open time:
+
+- `GET /v1/t/o/:id` sets `email_sends.opened_at` (first open only), returns a
+  42-byte transparent GIF with `Cache-Control: no-store`.
+- Then fire-and-forgets an `email.opened` event (props: `emailSendId`,
+  `templateKey`) into PostHog + the ingest pipeline, and emits the outbound-catalog
+  `email.opened` event that fans out durably to every subscribed DESTINATION —
+  **per-hit, not first-touch**.
+
+The engine's own constants for these are `EMAIL_OPENED = "email.opened"` and
+`EMAIL_LINK_CLICKED = "email.link_clicked"`. In journey code, reference them via
+your `Events` constants and check `ctx.history.hasEvent({ event })` to branch on
+engagement — see the **hogsend-authoring-journeys** skill.
+
+## Preference / suppression check
+
+Before sending, `sendTrackedEmail` checks `email_preferences` for the recipient.
+If the user is unsubscribed/suppressed/category-unsubscribed, the send is skipped
+and the result `status` reflects it (`"unsubscribed"` / `"suppressed"` /
+`"skipped"`) — no provider call. Genuinely transactional mail that must always go
+out can pass `skipPreferenceCheck: true`. Frequency caps also short-circuit here
+(`status: "skipped", reason: "frequency_capped"`); `category: "transactional"` is
+exempt from caps by default.
+
+## Unsubscribe — token, URL, and the footer slot
+
+The unsubscribe link is a signed, expiring token, not a DB lookup. The engine's
+`sendEmail` builds it for journey sends:
+
+```ts
+import { generateUnsubscribeUrl } from "@hogsend/email";
+// engine builds this for you when API_PUBLIC_URL + BETTER_AUTH_SECRET are set:
+const unsubscribeUrl = generateUnsubscribeUrl({
+  baseUrl: process.env.API_PUBLIC_URL,
+  secret: process.env.BETTER_AUTH_SECRET,
+  externalId: userId,
+  email: to,
+});
+// → {baseUrl}/v1/email/unsubscribe?token=<base64url payload>.<hmac-sha256 sig>
+```
+
+It is injected into your template as the `unsubscribeUrl` prop AND set as the
+`List-Unsubscribe` + `List-Unsubscribe-Post` headers (one-click unsubscribe). All
+you do as the author is **accept `unsubscribeUrl?: string` in your props and pass
+it to `Layout`** (which forwards it to `Footer`) — that's the slot:
+
+```tsx
+export default function MyEmail({ name = "there", unsubscribeUrl }: MyEmailProps) {
+  return (
+    <Layout preview={`Hi ${name}`} unsubscribeUrl={unsubscribeUrl}>
+      {/* … */}
+    </Layout>
+  );
+}
+```
+
+There is a matching `generatePreferenceCenterUrl(...)` →
+`{baseUrl}/v1/email/preferences?token=…` (action `"manage"`) for a full
+preference center link; pass it as `preferencesUrl` to `Layout` the same way.
+
+## Why these links aren't click-tracked
+
+`rewriteLinks` skips any URL containing `/v1/email/unsubscribe` or
+`/v1/email/preferences` (the `SKIP_PATTERNS`), so unsubscribe and preference
+links go straight through un-rewritten — an unsubscribe must never bounce through
+the click endpoint. You don't need to do anything for this; it's handled.
+
+## What you do NOT do
+
+- Don't call `prepareTrackedHtml`, `rewriteLinks`, or `injectOpenPixel` — the
+  mailer calls them.
+- Don't call `generateUnsubscribeUrl` in a template — the engine injects the URL.
+- Don't hand-roll an open pixel or rewrite links in your `.tsx`.
+
+Author the component; the engine guarantees tracking + unsubscribe on send.
+Full system docs: `docs/tracking.md`.
+
+---
+
+## Semantic links — in-email answers via `EmailAction`
+
+A plain tracked link tells you it WAS clicked; a semantic link tells you what
+the click MEANT. `EmailAction` (from `@hogsend/email`) renders an anchor that
+carries an event name + scalar properties; the engine lifts that metadata into
+the `tracked_links` row at send time (the attributes never reach the inbox) and
+emits the event through the FULL ingest pipeline at click time — journeys can
+`ctx.waitForEvent` it, destinations (PostHog et al) receive it as
+`email.action`, and `user_events` records it.
+
+```tsx
+import { EmailAction } from "@hogsend/email";
+import { Events } from "../journeys/constants/index.js";
+
+<EmailAction
+  event={Events.CHECKIN_ANSWERED}      // your event — NOT email.*/journey.*/bucket.*/contact.*
+  properties={{ answer: "yes" }}        // scalars only (string/number/boolean/null)
+  href="https://app.example.com/thanks" // where the human lands after the click
+  className="…"                          // styled like any anchor (Tailwind works)
+>
+  Going great
+</EmailAction>
+```
+
+Rules the engine enforces (a violation FAILS the send, loudly):
+
+- `event` must not use a reserved namespace (`email.`, `journey.`, `bucket.`,
+  `contact.` — dot or colon form).
+- `properties` values must be scalars; the JSON must stay under 2 KB.
+- The `href` must be an absolute http(s) URL (it is also click-tracked as
+  normal).
+
+Semantics at click time:
+
+- **First answer wins, per (send, event name).** An NPS row of eleven
+  EmailActions shares one answer slot — only the first clicked score ingests
+  (idempotency key `sem:<emailSendId>:<event>`). The generic `email.link_clicked`
+  still fires for every hit.
+- **Answers confirm after a ~30s window.** A click is only a provisional
+  answer: a deferred task judges it once the burst window has fully elapsed,
+  so a scanner that clicks every link (Outlook SafeLinks / Proofpoint) is seen
+  in full — including its first click — and suppressed before anything is
+  recorded. Cost: ~30s of answer latency (invisible to day-scale journey
+  waits). Still don't make destructive actions ("cancel my account") a
+  one-click EmailAction.
+- Two EmailActions may share the same `href` with different
+  `event`/`properties` — they get separate tracked links (no URL collapse).
+- The answering journey reads the payload from
+  `ctx.waitForEvent(...) → { timedOut, properties }` — see the
+  hogsend-authoring-journeys skill.
+- **No landing page?** `href={HOSTED_ANSWER_HREF}` (from `@hogsend/email`)
+  resolves to the engine-hosted answer page: a thanks page with an optional
+  free-text box whose submission ingests `<event>.comment` (one comment per
+  send + event). Possession of the link is the auth, like unsubscribe.
+- **Cross-device stitch (opt-in):** `TRACKING_IDENTITY_TOKEN=true` appends an
+  encrypted one-hour `hs_t` token to tracked redirects; the landing site
+  exchanges it at `POST /v1/t/identify` for the distinct id and calls
+  `posthog.identify`. Never put a raw email in a URL — the token exists so
+  you don't have to.

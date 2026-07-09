@@ -1,0 +1,78 @@
+services:
+  postgres:
+    image: timescale/timescaledb:latest-pg18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hogsend
+      POSTGRES_PASSWORD: hogsend
+      POSTGRES_DB: hogsend
+    ports:
+      # Host port is parameterized so `pnpm bootstrap` can remap on conflict.
+      - "${POSTGRES_PORT:-5434}:5432"
+    volumes:
+      - pgdata:/home/postgres/pgdata/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hogsend"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6380}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  hatchet-postgres:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hatchet
+      POSTGRES_PASSWORD: hatchet
+      POSTGRES_DB: hatchet
+    volumes:
+      - hatchetpgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hatchet"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  hatchet-lite:
+    # Pinned to v0.84.0 (>= v0.80.0 DURABLE_EVICTION) so journey replay-safety
+    # Layer 1 (the durable `memo` fast path) is guaranteed for scaffolded apps.
+    image: ghcr.io/hatchet-dev/hatchet/hatchet-lite:v0.84.0
+    restart: unless-stopped
+    depends_on:
+      hatchet-postgres:
+        condition: service_healthy
+    ports:
+      - "${HATCHET_DASHBOARD_PORT:-8888}:8888"
+      - "${HATCHET_GRPC_PORT:-7077}:7077"
+    environment:
+      DATABASE_URL: postgresql://hatchet:hatchet@hatchet-postgres:5432/hatchet?sslmode=disable
+      SERVER_URL: http://localhost:${HATCHET_DASHBOARD_PORT:-8888}
+      SERVER_AUTH_COOKIE_DOMAIN: localhost
+      SERVER_AUTH_COOKIE_INSECURE: "true"
+      SERVER_AUTH_SET_EMAIL_VERIFIED: "true"
+      SERVER_DEFAULT_ENGINE_VERSION: V1
+      SERVER_GRPC_BIND_ADDRESS: 0.0.0.0
+      SERVER_GRPC_PORT: "7077"
+      SERVER_GRPC_INSECURE: "true"
+      SERVER_GRPC_BROADCAST_ADDRESS: localhost:${HATCHET_GRPC_PORT:-7077}
+      SERVER_MSGQUEUE_KIND: postgres
+    volumes:
+      - hatchetdata:/app/config
+
+volumes:
+  pgdata:
+  redisdata:
+  hatchetpgdata:
+  hatchetdata:

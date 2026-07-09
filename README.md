@@ -1,0 +1,340 @@
+# hogsend-demo
+
+A [Hogsend](https://hogsend.com) lifecycle orchestration app — code-first email
+journeys on PostHog + Resend, powered by `@hogsend/engine` (pinned at
+`0.39.0`). The engine is a versioned dependency; **your content**
+(journeys, email templates, webhook sources, workflows, schema) lives in `src/`
+and is yours to edit.
+
+## Prerequisites
+
+- Node 22 (`.node-version`)
+- pnpm (or npm / yarn / bun)
+- Docker (for local Timescale + Redis + Hatchet-Lite)
+
+## Quickstart
+
+```bash
+pnpm bootstrap     # first run only: Docker + .env + Hatchet token + migrate
+pnpm hogsend dev   # the daily driver: API + worker + health + URLs, one terminal
+```
+
+`hogsend dev` runs the whole local stack from one command — it reuses the infra
+and credentials bootstrap set up, runs migrations, spawns the API and worker as
+prefixed child processes, waits for health, and prints the local URLs (API,
+Studio, Hatchet dashboard). Ctrl+C stops everything. Fire a test event from a
+second terminal with `pnpm hogsend dev --fire test.signup --email you@example.com`.
+
+Prefer the processes by hand? `pnpm dev` (HTTP API on `http://localhost:3002`)
+plus `pnpm worker:dev` (Hatchet worker) in two terminals is the manual
+equivalent.
+
+`pnpm bootstrap` is idempotent — re-run it any time. It creates `.env` (with a
+fresh `BETTER_AUTH_SECRET`), brings up Timescale + Redis + Hatchet-Lite
+(auto-remapping any host ports already in use, so multiple stacks coexist),
+mints a Hatchet token for you, and runs both migration tracks.
+
+Using npm / yarn / bun? Swap `pnpm` for `npm run` / `yarn` / `bun run`
+(e.g. `npm run bootstrap`).
+
+API docs: `http://localhost:3002/docs`. Health: `GET /v1/health`. Full docs:
+[docs.hogsend.com](https://docs.hogsend.com).
+
+## Sending domain & test mode
+
+Set a real `RESEND_API_KEY` in `.env` to send email — and note that while your
+sending domain is unverified, **test mode** redirects every send to your own
+inbox (subject prefixed `[TEST → …]`), so nothing reaches a real recipient
+prematurely. If you scaffolded with `--domain`, `EMAIL_FROM` + `EMAIL_DOMAIN`
+are already set in `.env`; otherwise uncomment them in the "Sending domain"
+block.
+
+Verify the domain from the CLI (admin key required), with the app running:
+
+```bash
+pnpm hogsend domain add yourdomain.com   # register + print DNS records for your DNS host
+pnpm hogsend domain check                # poll until verified — test mode exits within 60s
+pnpm hogsend domain status               # state, records, test-mode banner
+```
+
+`add` detects your DNS host via NS lookup and, on Cloudflare/Vercel, offers to
+apply the records automatically when a `CLOUDFLARE_API_TOKEN` / `VERCEL_TOKEN`
+is set. Details:
+[docs.hogsend.com/docs/operating/test-mode](https://docs.hogsend.com/docs/operating/test-mode).
+
+## PostHog
+
+If you answered the scaffolder's PostHog prompt (or passed
+`--posthog-key phc_… [--posthog-host https://eu.i.posthog.com]`), `.env`
+already carries the wiring as **active** values:
+
+- `POSTHOG_API_KEY` + `POSTHOG_HOST` — event capture + person property writes
+- `ENABLE_POSTHOG_DESTINATION=true` — the email lifecycle fans out to PostHog
+  durably, on the delivery spine
+- `POSTHOG_WEBHOOK_SECRET` — freshly minted; verifies inbound PostHog
+  webhooks at `POST /v1/webhooks/posthog`
+
+Skipped it (or passed `--no-posthog`)? Nothing was touched — uncomment the
+same lines in `.env` whenever you're ready.
+
+Once the app is deployed, finish the loop with one command:
+
+```bash
+pnpm hogsend connect posthog   # wires person reads + the PostHog→Hogsend event loop
+```
+
+The `phc_` project key is write-only by PostHog's design, so `connect` sets up
+the read credential (per-user timezone resolution, property conditions) and
+points PostHog's event stream back at your instance — the people your journeys
+email and the persons in PostHog stay one identity. Details:
+[docs.hogsend.com/docs/guides/analytics-access](https://docs.hogsend.com/docs/guides/analytics-access).
+
+## Verify the pipeline (end-to-end smoke)
+
+With `pnpm dev` + `pnpm worker:dev` running (and an ingest-scoped
+`HOGSEND_API_KEY` in `.env` — `pnpm bootstrap` mints one for you):
+
+```bash
+curl -XPOST http://localhost:3002/v1/events \
+  -H "authorization: Bearer $HOGSEND_API_KEY" \
+  -H 'content-type: application/json' \
+  -d '{"name":"test.signup","userId":"smoke-1","email":"smoke@example.com"}'
+```
+
+The bundled `test-onboarding` journey runs to completion (no email / external
+deps). Watch it in the Hatchet dashboard, or query `journey_states`.
+`GET /v1/health` should report `schema.engine.inSync:true` and
+`schema.client.inSync:true`.
+
+## Integrate from your app
+
+The data plane is the typed front door to this engine — call it from your own
+product code (a signup handler, a billing webhook, a cron) via the configured
+`@hogsend/client` instance in `src/lib/hogsend.ts`. It needs an ingest-scoped
+`HOGSEND_API_KEY` and `API_PUBLIC_URL` pointing at this API.
+
+```ts
+import { hs } from "./lib/hogsend.js";
+
+// Upsert (create or merge) a contact — identity is email and/or userId.
+await hs.contacts.upsert({
+  userId: "user_123",
+  email: "ada@example.com",
+  properties: { plan: "pro" }, // -> contacts.properties
+});
+
+// Send an event — this is what enrolls a contact into a matching journey.
+// `eventProperties` feed trigger.where / exitOn; `contactProperties` merge
+// onto the contact (the D2 split — the two bags are never conflated).
+await hs.events.send({
+  userId: "user_123",
+  name: "test.signup",
+  eventProperties: { source: "pricing-page" },
+  contactProperties: { signupCompleted: true },
+});
+
+// Manage list membership (defined in src/lists/index.ts).
+await hs.lists.subscribe({ list: "product-updates", userId: "user_123" });
+```
+
+`hs.events.send` returns `{ stored, exits }`; `hs.contacts.upsert` returns
+`{ id, created, linked }`. See `packages/client` (the `@hogsend/client` README)
+for the full surface, and the `hogsend` CLI (`pnpm hogsend events send …`,
+`pnpm hogsend contacts upsert …`) for the same operations from a shell.
+
+## Examples included
+
+A fresh app ships with a small, curated example set spanning the three ways to
+send. Everything is **content**: edit, rename, or delete freely.
+
+| Send mode | How it's sent | Templates |
+| --- | --- | --- |
+| **Transactional** | one-off, `hs.emails.send` / `POST /v1/emails` | `transactional/magic-link`, `transactional/receipt` |
+| **Lifecycle** | from a journey | `activation/welcome`, `activation/nudge`, `lifecycle/trial-expiring` |
+| **Marketing** | broadcast to a list, `hs.campaigns.send` | `marketing/product-update` |
+
+- **Journeys** (`src/journeys/`): `welcome` (a trimmed welcome series),
+  `trial-expiring` (waits out a trial, then reminds — unless the user converts),
+  and `test-onboarding` (the no-email smoke journey).
+- **Lists** (`src/lists/index.ts`): `product-updates` — the marketing template's
+  `category` matches this list id, so a broadcast only reaches subscribers.
+- **Buckets** (`src/buckets/`): `power-users` — a real-time audience.
+
+### Send a one-off transactional email
+
+```ts
+import { hs } from "./lib/hogsend.js";
+
+await hs.emails.send({
+  to: "ada@example.com",
+  template: "transactional/magic-link",
+  props: { loginUrl: "https://app.example.com/auth/magic?token=abc" },
+});
+```
+
+### Broadcast a marketing campaign to a list
+
+`hs.campaigns.send` durably sends one template to every **subscribed** member of
+a list (the engine enqueues; the worker fans out the sends). The
+`marketing/product-update` template's `category` is `product-updates`, so this
+respects each contact's opt-in to that list.
+
+```ts
+import { hs } from "./lib/hogsend.js";
+
+const { campaignId } = await hs.campaigns.send({
+  name: "June product update",
+  list: "product-updates", // defined in src/lists/index.ts
+  template: "marketing/product-update",
+  props: {
+    headline: "What's new in June",
+    highlights: ["Faster enrollment", "New webhook sources"],
+  },
+});
+
+// Poll for delivery counts.
+const campaign = await hs.campaigns.get(campaignId);
+```
+
+Contacts opt into a list with `hs.lists.subscribe({ list: "product-updates", userId })`.
+
+## Dev loop
+
+- `pnpm dev` — API with hot reload (tsx watch)
+- `pnpm worker:dev` — worker with hot reload
+- `pnpm test` — vitest
+- `pnpm check-types` — tsc
+- `pnpm build` — tsup bundle to `dist/` (`pnpm start` / `pnpm worker` run it)
+
+## Adding a journey
+
+1. Create `src/journeys/my-journey.ts` using `defineJourney` (copy
+   `src/journeys/welcome.ts` as a starting point).
+2. Add any new event/template names to `src/journeys/constants/index.ts`.
+3. Register it in `src/journeys/index.ts` (`journeys` array).
+
+The journey's `trigger.event` is what enrolls a user; the engine routes
+ingested events to matching journeys automatically.
+
+## Adding a bucket
+
+Buckets are real-time, code-defined groups of users — the peer of a journey. A
+user joins the moment their data satisfies the bucket's `criteria` and leaves
+when it stops; each transition fires `bucket:entered:<id>` / `bucket:left:<id>`
+through the same ingestion spine a journey trigger binds to.
+
+1. Create `src/buckets/my-bucket.ts` using `defineBucket` (copy
+   `src/buckets/power-users.ts` as a starting point).
+2. Register it in `src/buckets/index.ts` (`buckets` array) and add its id to the
+   `BucketId` union in `src/journeys/constants/index.ts` — that keeps the typed
+   `bucketEntered`/`bucketLeft` alias helpers typo-safe.
+
+That's it for a bucket that just exists in Studio. To make a journey react, bind
+its `trigger.event` to `bucketEntered("my-bucket")` (and optionally
+`exitOn: [{ event: bucketLeft("my-bucket") }]`). Buckets are observe-only in
+Studio — there is no visual builder; they live in code, like journeys.
+
+## Adding a webhook source
+
+1. Create `src/webhook-sources/my-source.ts` using `defineWebhookSource`
+   (copy `src/webhook-sources/posthog.ts`).
+2. Register it in `src/webhook-sources/index.ts`.
+
+It is served at `POST /v1/webhooks/:sourceId`; the `transform` result feeds the
+same ingestion pipeline that drives journeys. `auth` is a discriminated union:
+`type: "match"` (shared-secret equality; open when the secret is unset) or
+`type: "signature"` (`svix` / `stripe` / `hmac-hex` — fails closed when the
+secret is unset).
+
+The engine also ships **built-in integration presets** — Clerk, Supabase,
+Stripe, and Segment — served at `POST /v1/webhooks/{clerk,supabase,stripe,segment}`
+with no code to write. Each mounts when its secret env var is set
+(`CLERK_WEBHOOK_SECRET`, `SUPABASE_WEBHOOK_SECRET`, `STRIPE_WEBHOOK_SECRET`,
+`SEGMENT_WEBHOOK_SECRET`) and `ENABLED_WEBHOOK_PRESETS` allows it. Defining your
+own source with the same id overrides the preset.
+
+## Outbound webhooks
+
+The engine emits a signed (Standard Webhooks / Svix-style HMAC-SHA256) event
+stream — `contact.*`, `email.*`, `journey.completed`, `bucket.*` — to your
+HTTPS endpoints. Manage subscriptions with the CLI or the admin API:
+
+```bash
+pnpm hogsend webhooks create --url https://your.app/hooks --all-events
+pnpm hogsend webhooks list
+```
+
+The CLI wraps `POST /v1/admin/webhooks` (admin key required). The signing secret
+is shown once on create + rotate. On the subscriber side, verify deliveries with
+`verifyHogsendWebhook({ payload, headers, secret })` from `@hogsend/client`.
+
+## Customizing emails
+
+Your email templates live in `src/emails/` — they're **yours**, edit freely. The
+engine ships no business templates; it owns only the rendering machinery and the
+delivery provider.
+
+1. Edit or add a React Email component in `src/emails/` (copy `welcome.tsx`).
+2. Add its prop type in `src/emails/types.ts`.
+3. Register it in `src/emails/registry.ts` (key → component + subject + category).
+4. Declare the key + props in `src/emails/templates.d.ts` so
+   `sendEmail({ template, props })` is type-checked.
+
+The `templates` registry is passed to `createHogsendClient({ email: { templates } })` and
+threaded into the engine's tracked mailer (rendering, preferences, link/open
+tracking, and the `email_sends` pipeline all come along for free). The template
+keys line up with the `Templates` constants journeys send with.
+
+## Adding a custom Hatchet task
+
+1. Create a task in `src/workflows/` (copy `backfill-example.ts`).
+2. Add it to the `extraWorkflows` array in `src/workflows/index.ts`.
+
+`src/worker.ts` passes `extraWorkflows` to `createWorker`, so your tasks register
+on worker start alongside the engine's built-ins.
+
+## Swapping the email provider
+
+The default email provider is Resend (built from `RESEND_API_KEY` /
+`RESEND_WEBHOOK_SECRET`). To use Postmark, SES, etc., implement the engine's
+`EmailProvider` contract (`import type { EmailProvider } from "@hogsend/engine"`)
+— `send(msg)` + webhook parse/verify — and pass it as
+`createHogsendClient({ email: { provider } })`. Rendering, tracking, preferences, and the
+`email_sends` pipeline are engine-owned and unaffected by the swap.
+
+## Migrations — two tracks
+
+Hogsend uses **two independent migration tracks**:
+
+- **Engine track** — owned by `@hogsend/db`, ledger
+  `drizzle.__drizzle_migrations`. Applied first. You never author these; they
+  arrive when you bump `@hogsend/*`.
+- **Client track** — owned by this repo, ledger `drizzle.__client_migrations`,
+  files in `./migrations`. Your own tables live in `src/schema/index.ts`.
+
+```bash
+pnpm db:generate    # generate a CLIENT migration from src/schema changes
+pnpm db:migrate     # apply engine track, then client track (scripts/migrate.ts)
+```
+
+`scripts/migrate.ts` always runs engine-then-client. The Railway
+`preDeployCommand` (`pnpm db:migrate`) does the same before each deploy.
+
+> **`db:push` ledger gotcha:** `pnpm db:push` writes schema objects directly
+> WITHOUT recording a row in the migration ledger. Convenient for fast local
+> iteration, but it leaves the ledger *behind* the actual schema, so a later
+> `db:migrate` (or the boot guard) thinks migrations are pending. For anything
+> you intend to deploy, use `db:generate` + `db:migrate`, not `db:push`.
+
+## Upgrading the engine
+
+```bash
+pnpm up "@hogsend/*"      # bump engine + plugins to the next pinned line
+pnpm db:migrate           # apply any new engine migrations
+# then confirm: GET /v1/health shows engine + client both inSync:true
+```
+
+The boot guard in `src/index.ts` refuses to start if the **engine** schema is
+behind the build (a behind-engine DB is a fatal misconfiguration). The
+**client** track does not gate boot — a pending client migration surfaces as
+`status:"migration_pending"` on `/v1/health` for you to resolve.

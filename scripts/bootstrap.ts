@@ -1,0 +1,650 @@
+import { spawnSync } from "node:child_process";
+import { createHash, randomBytes } from "node:crypto";
+import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { createServer } from "node:net";
+import { basename, dirname, join, resolve } from "node:path";
+import { createInterface } from "node:readline/promises";
+import { fileURLToPath } from "node:url";
+
+/**
+ * The one-command local setup (run via `<pm> run bootstrap`).
+ *
+ * Idempotent and safe to re-run. It:
+ *   1. checks Docker is installed + running
+ *   2. creates `.env` from `.env.example` with a fresh BETTER_AUTH_SECRET
+ *   3. remaps any conflicting host ports (so multiple Hogsend stacks coexist)
+ *   4. brings up Postgres + Redis + Hatchet-Lite and waits for health
+ *   5. mints a Hatchet API token and writes it to `.env`
+ *   6. runs the two-track database migrations
+ *   7. mints an ingest-scoped data-plane API key and writes it to `.env`
+ *   8. (optional, interactive) creates your first Studio admin via the CLI
+ *
+ * After this, the `dev` + `worker:dev` scripts just work. Docs: docs.hogsend.com
+ */
+
+// Default seed tenant baked into the hatchet-lite image. Overridden at runtime
+// by whatever `/config/server.yaml` reports, so a future image can't break us.
+const DEFAULT_HATCHET_TENANT = "707d0855-80ab-4e1f-a156-f1c4546cbf52";
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const ENV_PATH = join(ROOT, ".env");
+const ENV_EXAMPLE = join(ROOT, ".env.example");
+const PROJECT = sanitizeName(basename(ROOT));
+
+// --- tiny ANSI helpers (no deps in the scaffolded app) ---------------------
+const isTTY = Boolean(process.stdout.isTTY);
+const paint =
+  (code: string) =>
+  (s: string): string =>
+    isTTY ? `\x1b[${code}m${s}\x1b[0m` : s;
+const bold = paint("1");
+const dim = paint("2");
+const red = paint("31");
+const green = paint("32");
+const yellow = paint("33");
+const cyan = paint("36");
+const magenta = paint("35");
+
+let stepNo = 0;
+const TOTAL = 8;
+function step(label: string): void {
+  stepNo += 1;
+  process.stdout.write(
+    `\n${magenta(bold(`[${stepNo}/${TOTAL}]`))} ${bold(label)}\n`,
+  );
+}
+function ok(msg: string): void {
+  process.stdout.write(`  ${green("✓")} ${msg}\n`);
+}
+function info(msg: string): void {
+  process.stdout.write(`  ${dim("·")} ${dim(msg)}\n`);
+}
+function warn(msg: string): void {
+  process.stdout.write(`  ${yellow("!")} ${msg}\n`);
+}
+function die(msg: string, hint?: string): never {
+  // Restore the cursor in case we died mid-spin (startSpinner hides it).
+  if (isTTY) process.stdout.write("\x1b[?25h");
+  process.stdout.write(`\n  ${red("✗")} ${msg}\n`);
+  if (hint) process.stdout.write(`    ${dim(hint)}\n`);
+  process.exit(1);
+}
+
+/**
+ * Dependency-free single-line spinner (the scaffolded app has no clack). Off a
+ * TTY it just prints the message once and returns a no-op, so CI logs stay
+ * linear. Returns a `stop()` that clears the line and restores the cursor.
+ */
+function startSpinner(message: string): () => void {
+  if (!isTTY) {
+    info(message);
+    return () => {};
+  }
+  const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+  let i = 0;
+  process.stdout.write("\x1b[?25l"); // hide cursor
+  const timer = setInterval(() => {
+    // `?? "⠋"` keeps `frame` a string under noUncheckedIndexedAccess (the
+    // scaffold's tsconfig) — the modulo guarantees a valid index anyway.
+    const frame = frames[i % frames.length] ?? "⠋";
+    i += 1;
+    process.stdout.write(`\r  ${cyan(frame)} ${dim(message)}`);
+  }, 80);
+  return () => {
+    clearInterval(timer);
+    process.stdout.write("\r\x1b[2K\x1b[?25h"); // clear line + show cursor
+  };
+}
+
+/**
+ * Yes/No prompt that defaults to NO and auto-skips (returns the default) when
+ * there is no TTY — so CI / piped runs never block. No deps: plain readline.
+ */
+async function confirm(question: string, def = false): Promise<boolean> {
+  if (!process.stdin.isTTY) return def;
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const hint = def ? "Y/n" : "y/N";
+    const answer = (await rl.question(`  ${question} ${dim(`(${hint})`)} `))
+      .trim()
+      .toLowerCase();
+    if (answer === "") return def;
+    return answer === "y" || answer === "yes";
+  } finally {
+    rl.close();
+  }
+}
+
+// --- generic helpers -------------------------------------------------------
+function sanitizeName(name: string): string {
+  const cleaned = name
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^[^a-z0-9]+/, "");
+  return cleaned || "hogsend-app";
+}
+
+/** Which package manager invoked us (`npm_config_user_agent`). */
+function detectPm(): string {
+  const name = (process.env.npm_config_user_agent ?? "").split("/")[0];
+  return name === "npm" || name === "yarn" || name === "bun" ? name : "pnpm";
+}
+
+const PM = detectPm();
+
+/** Idiomatic "run a script" for the active pm — only npm needs the `run` word. */
+function pmRun(script: string): string {
+  return PM === "npm" ? `npm run ${script}` : `${PM} ${script}`;
+}
+
+interface Run {
+  status: number;
+  stdout: string;
+  stderr: string;
+}
+
+function run(cmd: string, args: string[]): Run {
+  const r = spawnSync(cmd, args, { cwd: ROOT, encoding: "utf8" });
+  return {
+    status: r.status ?? 1,
+    stdout: (r.stdout ?? "").trim(),
+    stderr: (r.stderr ?? "").trim(),
+  };
+}
+
+/** Stream a command's output straight to the terminal (for long/noisy steps). */
+function runLive(cmd: string, args: string[], shell = false): number {
+  const r = spawnSync(cmd, args, { cwd: ROOT, stdio: "inherit", shell });
+  return r.status ?? 1;
+}
+
+function isPortFree(port: number): Promise<boolean> {
+  return new Promise((res) => {
+    const srv = createServer();
+    srv.once("error", () => res(false));
+    srv.once("listening", () => srv.close(() => res(true)));
+    srv.listen(port, "0.0.0.0");
+  });
+}
+
+async function findFreePort(
+  start: number,
+  taken: Set<number>,
+): Promise<number> {
+  let port = start;
+  while (taken.has(port) || !(await isPortFree(port))) port += 1;
+  taken.add(port);
+  return port;
+}
+
+// --- .env helpers ----------------------------------------------------------
+function getEnv(content: string, key: string): string | undefined {
+  return content.match(new RegExp(`^${key}=(.*)$`, "m"))?.[1];
+}
+
+function setEnv(content: string, key: string, value: string): string {
+  const re = new RegExp(`^${key}=.*$`, "m");
+  if (re.test(content)) return content.replace(re, `${key}=${value}`);
+  return `${content.trimEnd()}\n${key}=${value}\n`;
+}
+
+function portInUrl(url: string): number | undefined {
+  const m = url.match(/:\/\/[^/]*?:(\d+)/);
+  return m ? Number(m[1]) : undefined;
+}
+
+function withPort(url: string, port: number): string {
+  return url.replace(/(:\/\/[^/]*?:)\d+/, `$1${port}`);
+}
+
+// --- 1. Docker -------------------------------------------------------------
+function checkDocker(): void {
+  if (run("docker", ["--version"]).status !== 0) {
+    die(
+      "Docker is not installed.",
+      "Install Docker Desktop → https://docs.docker.com/get-docker/",
+    );
+  }
+  if (run("docker", ["info"]).status !== 0) {
+    die(
+      "Docker is installed but the daemon isn't running.",
+      `Start Docker Desktop and re-run \`${pmRun("bootstrap")}\`.`,
+    );
+  }
+  ok("Docker is running");
+}
+
+// --- 2. .env ---------------------------------------------------------------
+function ensureEnv(): void {
+  if (existsSync(ENV_PATH)) {
+    ok(".env already exists — keeping it");
+    return;
+  }
+  if (!existsSync(ENV_EXAMPLE))
+    die(".env.example is missing — cannot create .env");
+  copyFileSync(ENV_EXAMPLE, ENV_PATH);
+  let content = readFileSync(ENV_PATH, "utf8");
+  content = setEnv(
+    content,
+    "BETTER_AUTH_SECRET",
+    randomBytes(32).toString("base64"),
+  );
+  writeFileSync(ENV_PATH, content);
+  ok("Created .env with a fresh BETTER_AUTH_SECRET");
+}
+
+// --- 3. ports --------------------------------------------------------------
+interface Ports {
+  pg: number;
+  redis: number;
+  grpc: number;
+  dash: number;
+}
+
+async function resolvePorts(): Promise<Ports> {
+  const env = readFileSync(ENV_PATH, "utf8");
+  const dbUrl = getEnv(env, "DATABASE_URL") ?? "";
+  const redisUrl = getEnv(env, "REDIS_URL") ?? "";
+  const hostPort = getEnv(env, "HATCHET_CLIENT_HOST_PORT") ?? "localhost:7077";
+
+  const want: Ports = {
+    pg: portInUrl(dbUrl) ?? 5434,
+    redis: portInUrl(redisUrl) ?? 6380,
+    grpc: Number(hostPort.split(":")[1]) || 7077,
+    dash: Number(getEnv(env, "HATCHET_DASHBOARD_PORT")) || 8888,
+  };
+
+  // If our own stack is already up, its containers own these ports — leave them.
+  if (run("docker", ["compose", "ps", "-q"]).stdout.length > 0) {
+    ok("Containers already running — keeping current ports");
+    return want;
+  }
+
+  const taken = new Set<number>();
+  const got: Ports = { ...want };
+  const remaps: string[] = [];
+  for (const key of ["pg", "redis", "grpc", "dash"] as const) {
+    const desired = want[key];
+    if (!taken.has(desired) && (await isPortFree(desired))) {
+      taken.add(desired);
+      continue;
+    }
+    const free = await findFreePort(desired + 1, taken);
+    got[key] = free;
+    remaps.push(`${key} ${desired}→${free}`);
+  }
+
+  if (remaps.length === 0) {
+    ok("All default ports are free");
+    return got;
+  }
+
+  warn(`Ports in use — remapped: ${remaps.join(", ")}`);
+  syncEnvPorts(got);
+  info("Synced host ports into .env (Docker Compose reads them)");
+  // A minted token embeds the gRPC broadcast address; a port change makes an
+  // existing token stale (ensureHatchetToken keeps a real token as-is).
+  if (got.grpc !== want.grpc) {
+    const token = getEnv(env, "HATCHET_CLIENT_TOKEN") ?? "";
+    if (token.split(".").length === 3) {
+      warn(
+        "gRPC port changed — re-mint your Hatchet token (the old one targets the old port).",
+      );
+    }
+  }
+  return got;
+}
+
+/**
+ * Persist the chosen ports to `.env`. The compose file interpolates the
+ * `*_PORT` vars (`${POSTGRES_PORT:-5434}` etc.) and the app reads the URLs —
+ * so a single `.env` is the source of truth for both, with no override file.
+ */
+function syncEnvPorts(got: Ports): void {
+  let env = readFileSync(ENV_PATH, "utf8");
+  const dbUrl = getEnv(env, "DATABASE_URL");
+  const redisUrl = getEnv(env, "REDIS_URL");
+  if (dbUrl) env = setEnv(env, "DATABASE_URL", withPort(dbUrl, got.pg));
+  if (redisUrl) env = setEnv(env, "REDIS_URL", withPort(redisUrl, got.redis));
+  env = setEnv(env, "HATCHET_CLIENT_HOST_PORT", `localhost:${got.grpc}`);
+  // Compose-only port vars (consumed by docker-compose.yml interpolation).
+  env = setEnv(env, "POSTGRES_PORT", String(got.pg));
+  env = setEnv(env, "REDIS_PORT", String(got.redis));
+  env = setEnv(env, "HATCHET_DASHBOARD_PORT", String(got.dash));
+  env = setEnv(env, "HATCHET_GRPC_PORT", String(got.grpc));
+  writeFileSync(ENV_PATH, env);
+}
+
+// --- 4. docker up ----------------------------------------------------------
+function dockerUp(): void {
+  info("docker compose up -d --wait (first run pulls images — be patient)");
+  const status = runLive("docker", [
+    "compose",
+    "up",
+    "-d",
+    "--wait",
+    "--wait-timeout",
+    "180",
+  ]);
+  if (status !== 0) {
+    die(
+      "Containers failed to start.",
+      `Check \`docker compose logs\`, then re-run \`${pmRun("bootstrap")}\`.`,
+    );
+  }
+  ok("Postgres, Redis and Hatchet-Lite are up");
+}
+
+// --- 5. hatchet token ------------------------------------------------------
+function hatchetTenantId(): string {
+  const r = run("docker", [
+    "compose",
+    "exec",
+    "-T",
+    "hatchet-lite",
+    "cat",
+    "/config/server.yaml",
+  ]);
+  const m = r.stdout.match(/defaultTenantId:\s*([0-9a-f-]+)/);
+  return m?.[1] ?? DEFAULT_HATCHET_TENANT;
+}
+
+function mintToken(tenantId: string): string | null {
+  const r = run("docker", [
+    "compose",
+    "exec",
+    "-T",
+    "hatchet-lite",
+    "/hatchet-admin",
+    "token",
+    "create",
+    "--config",
+    "/config",
+    "--tenant-id",
+    tenantId,
+    "--name",
+    PROJECT,
+  ]);
+  // The JWT is the only stdout line; logs go to stderr.
+  const token = r.stdout.split("\n").pop()?.trim() ?? "";
+  return r.status === 0 && token.split(".").length === 3 ? token : null;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((res) => setTimeout(res, ms));
+}
+
+async function ensureHatchetToken(): Promise<void> {
+  const env = readFileSync(ENV_PATH, "utf8");
+  const current = getEnv(env, "HATCHET_CLIENT_TOKEN") ?? "";
+  if (current.split(".").length === 3) {
+    ok("HATCHET_CLIENT_TOKEN already set — keeping it");
+    return;
+  }
+
+  const tenantId = hatchetTenantId();
+  // Try once eagerly — if Hatchet is already initialized the token mints
+  // immediately and we never start a spinner (no spinner flash on the happy path).
+  let token = mintToken(tenantId);
+  if (!token) {
+    const stop = startSpinner("Waiting for Hatchet to finish initializing…");
+    for (let attempt = 2; attempt <= 20 && !token; attempt += 1) {
+      await sleep(2000);
+      token = mintToken(tenantId);
+    }
+    stop(); // stop BEFORE printing ok()/die() so the spinner line is gone.
+  }
+  if (!token) {
+    die(
+      "Couldn't mint a Hatchet token after ~40s.",
+      "Open the dashboard, create one manually, and set HATCHET_CLIENT_TOKEN in .env.",
+    );
+  }
+
+  writeFileSync(
+    ENV_PATH,
+    setEnv(readFileSync(ENV_PATH, "utf8"), "HATCHET_CLIENT_TOKEN", token),
+  );
+  ok("Minted a Hatchet API token → .env");
+}
+
+// --- 6. migrations ---------------------------------------------------------
+function runMigrations(): void {
+  info(`${pmRun("db:migrate")} (engine track, then client track)`);
+  const status = runLive(
+    PM,
+    ["run", "db:migrate"],
+    process.platform === "win32",
+  );
+  if (status !== 0) {
+    die(
+      "Migrations failed.",
+      `Check the output above, then re-run \`${pmRun("bootstrap")}\`.`,
+    );
+  }
+  ok("Database migrated");
+}
+
+// --- 7. data-plane api key -------------------------------------------------
+/**
+ * Mint a data-plane API key with the `ingest` scope and write it to `.env` as
+ * `HOGSEND_API_KEY`. This is the key the `@hogsend/client` instance in
+ * `src/lib/hogsend.ts` (and the `hogsend` CLI) authenticate with against the
+ * guarded `/v1/contacts`, `/v1/events`, `/v1/emails`, `/v1/lists` routes.
+ *
+ * Mirrors the engine's `generateApiKey`/`hashApiKey` (sha256 hex of the raw
+ * `hsk_` key; only the hash is stored). Idempotent: a real `hsk_` key already
+ * in `.env` is kept as-is (re-running never creates a duplicate). If the DB is
+ * unreachable it WARNS and continues — the rest of the stack is up, and you can
+ * re-run `bootstrap` (or create a key via `POST /v1/admin/api-keys`) later.
+ */
+async function ensureDataPlaneKey(): Promise<void> {
+  const env = readFileSync(ENV_PATH, "utf8");
+  const current = getEnv(env, "HOGSEND_API_KEY") ?? "";
+  if (current.startsWith("hsk_")) {
+    ok("HOGSEND_API_KEY already set — keeping it");
+    return;
+  }
+
+  const databaseUrl = getEnv(env, "DATABASE_URL");
+  if (!databaseUrl) {
+    warn("DATABASE_URL is not set in .env — skipping data-plane key mint.");
+    info("Set DATABASE_URL and re-run bootstrap to mint HOGSEND_API_KEY.");
+    return;
+  }
+
+  // hsk_<32 random bytes, base64url>; store only the sha256 hex of the full key.
+  const key = `hsk_${randomBytes(32).toString("base64url")}`;
+  const keyPrefix = key.slice(0, 8);
+  const keyHash = createHash("sha256").update(key).digest("hex");
+
+  // Dynamic import: `postgres` is a runtime dep, but only this step needs it, so
+  // a non-DB bootstrap path never pays for it. Any failure (module/connection)
+  // is treated as warn-not-die — the local stack is otherwise fully usable.
+  let sql: import("postgres").Sql | undefined;
+  try {
+    const { default: postgres } = await import("postgres");
+    sql = postgres(databaseUrl, { max: 1, onnotice: () => {} });
+    await sql`
+      INSERT INTO api_keys (name, key_prefix, key_hash, scopes)
+      VALUES (
+        ${"local-bootstrap"},
+        ${keyPrefix},
+        ${keyHash},
+        ${JSON.stringify(["ingest"])}::jsonb
+      )
+    `;
+  } catch (err) {
+    warn(
+      `Couldn't mint a data-plane key: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+    info("Is the database reachable? Re-run bootstrap once it is.");
+    return;
+  } finally {
+    await sql?.end({ timeout: 5 }).catch(() => {});
+  }
+
+  writeFileSync(
+    ENV_PATH,
+    setEnv(readFileSync(ENV_PATH, "utf8"), "HOGSEND_API_KEY", key),
+  );
+  ok("Minted an ingest-scoped data-plane key → HOGSEND_API_KEY in .env");
+  info(`Key (shown once): ${key}`);
+}
+
+// --- 8. first Studio admin (optional, interactive) -------------------------
+/**
+ * Offer to create the first Studio admin. Public sign-up is closed, so the only
+ * ways to mint the first admin are this CLI command and the boot-time env
+ * bootstrap (`STUDIO_ADMIN_EMAIL`). This step is interactive + skippable: it is
+ * a no-op in CI / non-TTY runs and when the operator declines.
+ *
+ * It shells out to the SAME `studio:admin` wrapper the package.json exposes
+ * (`node --env-file=.env node_modules/@hogsend/cli/dist/bin.js studio admin
+ * create`), so the CLI sees `DATABASE_URL` + `BETTER_AUTH_SECRET` from `.env` —
+ * exactly how `dev` loads its env. The masked password prompt is the CLI's own
+ * (stdio inherited).
+ */
+async function bootstrapAdmin(): Promise<void> {
+  const env = readFileSync(ENV_PATH, "utf8");
+
+  // If env-bootstrap is already configured, the API mints the admin on boot —
+  // don't double-create here.
+  const adminEmail = getEnv(env, "STUDIO_ADMIN_EMAIL");
+  if (adminEmail && !adminEmail.startsWith("#")) {
+    ok(`STUDIO_ADMIN_EMAIL is set (${adminEmail}) — the API mints it on boot`);
+    info(`Or run \`${pmRun("studio:admin")}\` to create one now.`);
+    return;
+  }
+
+  if (!process.stdin.isTTY) {
+    info("No TTY — skipping admin create.");
+    info(
+      `Create one later: \`${pmRun("studio:admin")}\` ` +
+        "(or set STUDIO_ADMIN_EMAIL in .env).",
+    );
+    return;
+  }
+
+  const wanted = await confirm("Create your first Studio admin now?", false);
+  if (!wanted) {
+    info(
+      `Skipped. Create one later: \`${pmRun("studio:admin")}\` ` +
+        "(or set STUDIO_ADMIN_EMAIL in .env).",
+    );
+    return;
+  }
+
+  // Reuse the exact env-loading the `studio:admin` script uses. Target the CLI's
+  // real ESM entry, NOT `node_modules/.bin/hogsend`: under pnpm/yarn that bin is a
+  // POSIX shell shim, so pointing `node` at it makes Node parse shell as JS
+  // ("SyntaxError: missing ) after argument list"). `@hogsend/cli`'s bin is
+  // `./dist/bin.js`, which resolves identically on npm/pnpm/yarn/bun.
+  const status = runLive(
+    "node",
+    [
+      "--env-file=.env",
+      join("node_modules", "@hogsend", "cli", "dist", "bin.js"),
+      "studio",
+      "admin",
+      "create",
+    ],
+    process.platform === "win32",
+  );
+  if (status !== 0) {
+    warn("Admin create did not complete.");
+    info(`You can re-run it any time: \`${pmRun("studio:admin")}\`.`);
+    return;
+  }
+  ok("Studio admin created");
+}
+
+// --- orchestration ---------------------------------------------------------
+async function main(): Promise<void> {
+  process.stdout.write(
+    `\n${magenta(bold("◆ Hogsend"))} ${dim("local bootstrap")} ${dim("· docs.hogsend.com")}\n`,
+  );
+
+  step("Checking Docker");
+  checkDocker();
+
+  step("Preparing .env");
+  ensureEnv();
+
+  step("Resolving ports");
+  const ports = await resolvePorts();
+
+  step("Starting containers");
+  dockerUp();
+
+  step("Minting Hatchet token");
+  await ensureHatchetToken();
+
+  step("Running migrations");
+  runMigrations();
+
+  step("Minting data-plane API key");
+  await ensureDataPlaneKey();
+
+  step("Creating your first Studio admin");
+  await bootstrapAdmin();
+
+  const dash = `http://localhost:${ports.dash}`;
+  const finalEnv = readFileSync(ENV_PATH, "utf8");
+  // Studio is served by the API itself at `${API_PUBLIC_URL}/studio`; read the
+  // real values from the .env we just wrote so a custom PORT / public URL is
+  // honoured (default http://localhost:3002).
+  const apiUrl = getEnv(finalEnv, "API_PUBLIC_URL") ?? "http://localhost:3002";
+  const apiPort = getEnv(finalEnv, "PORT") ?? "3002";
+  const studioUrl = `${apiUrl}/studio`;
+  // `connect posthog` needs a reachable instance (PostHog can't hit a localhost
+  // webhook), so this is an "After deploy" step — only surface it when the .env
+  // already points at PostHog.
+  const usingPosthog =
+    getEnv(finalEnv, "ENABLE_POSTHOG_DESTINATION") === "true" ||
+    Boolean(getEnv(finalEnv, "POSTHOG_HOST"));
+
+  // Aligned `label  url  # note` row for the three onboarding touchpoints.
+  const link = (label: string, url: string, note: string): string =>
+    `  ${dim(label.padEnd(9))}${cyan(url)}   ${dim(note)}`;
+
+  process.stdout.write(
+    [
+      `\n${green(bold("✓ Ready."))} ${bold("Welcome to Hogsend.")}`,
+      // The compose stack is only the infra your app talks to — the API and
+      // worker are your code and run as host processes (hot-reload), so nothing
+      // is serving yet until you start them.
+      `  ${dim("Local infra is up (Postgres, Redis, Hatchet) — your app isn't running yet. Start it:")}`,
+      "",
+      `    ${cyan(pmRun("dev"))}          ${dim(`# API + Studio on :${apiPort}`)}`,
+      `    ${cyan(pmRun("worker:dev"))}   ${dim("# Hatchet worker, 2nd terminal — runs your journeys")}`,
+      "",
+      link("Studio", studioUrl, "# your dashboard (once dev is running)"),
+      link(
+        "Docs",
+        "https://docs.hogsend.com",
+        "# guides + first journey: src/journeys/welcome.ts",
+      ),
+      link(
+        "Discord",
+        "https://discord.gg/rv6eZNvYrr",
+        "# questions, help, and what we're shipping",
+      ),
+      "",
+      `  ${dim("Studio admin:")} ${cyan(pmRun("studio:admin"))}   ${dim("# create one anytime (sign-up is closed)")}`,
+      `  ${dim("Hatchet dashboard:")} ${cyan(dash)} ${dim("(admin@example.com / Admin123!!)")}`,
+      usingPosthog
+        ? `  ${dim("After deploy:")} ${cyan("hogsend connect posthog")}   ${dim("# fetch the key, mint the webhook secret, wire the PostHog→Hogsend loop")}`
+        : null,
+      "",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+}
+
+main().catch((err: unknown) => {
+  die(err instanceof Error ? err.message : String(err));
+});
