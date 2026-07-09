@@ -1,8 +1,39 @@
-# hogsend-demo
+# Hogsend demo — Forgeline
 
-A [Hogsend](https://hogsend.com) lifecycle orchestration app — code-first email
-journeys on PostHog + Resend, powered by `@hogsend/engine` (pinned at
-`0.39.0`). The engine is a versioned dependency; **your content**
+The public demo instance of [Hogsend](https://hogsend.com) — marketing
+automation for teams that code, on PostHog + Resend. This repo is a real
+`create-hogsend` app running the published `@hogsend/engine` (`0.40.0`),
+deployed at:
+
+**[demo.hogsend.com](https://demo.hogsend.com)** — one-click Studio access with
+the shared login shown on the landing page (`demo@hogsend.com` /
+`forgeline-demo-2026`).
+
+The narrative is **Forgeline**, a fictional credit-based AI code-review + CI
+product. Contacts sign up, connect repos, run builds, buy and spend credits —
+and the journeys in `src/journeys/` respond:
+
+- `activation-connect-repo` / `activation-first-review` — signup → repo
+  connected → first green build
+- `credits-topup-nudge` / `credits-dunning` — 80%-of-credits nudge, zero-balance
+  dunning
+- `expansion-seats` — usage milestone → add seats
+- `feedback-nps` — NPS survey with a reminder branch
+- `winback-repo-quiet` — repo goes quiet → winback offer
+
+Journeys fan out across all four Hogsend channels — email, in-app feed/bell,
+Discord, Telegram (`src/journeys/channels.ts`) — with 16 React Email templates
+in `src/emails/`. The Studio data (3,214 contacts, ~46k email sends with
+open/click/bounce funnels) comes from a deterministic seed with fully relative
+timestamps, so it always reads as the last six months. No real email provider
+is configured; the demo can't send mail to anyone.
+
+Everything below is the standard scaffold README — clone this repo and run the
+same app locally, or scaffold your own with `pnpm create hogsend@latest`.
+
+---
+
+The engine is a versioned dependency; **your content**
 (journeys, email templates, webhook sources, workflows, schema) lives in `src/`
 and is yours to edit.
 
