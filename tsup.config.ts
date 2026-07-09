@@ -21,5 +21,7 @@ export default defineConfig({
     "@hogsend/engine",
     "@hogsend/plugin-posthog",
     "@hogsend/plugin-resend",
+    "@hogsend/plugin-discord",
+    "@hogsend/plugin-telegram",
   ],
 });
