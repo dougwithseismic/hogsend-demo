@@ -1,4 +1,5 @@
 import type { RoutesFn } from "@hogsend/engine";
+import { demoLandingRoute } from "./demo-landing.js";
 import { hogsendTokenRoutes } from "./hogsend-token.js";
 
 /**
@@ -10,4 +11,4 @@ import { hogsendTokenRoutes } from "./hogsend-token.js";
  * is inert until you wire your own end-user auth into it. Edit freely — this is
  * your content. Add a route, then it's already threaded through this barrel.
  */
-export const routes: RoutesFn[] = [hogsendTokenRoutes];
+export const routes: RoutesFn[] = [demoLandingRoute, hogsendTokenRoutes];
