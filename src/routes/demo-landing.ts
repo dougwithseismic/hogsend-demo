@@ -1,4 +1,5 @@
 import type { RoutesFn } from "@hogsend/engine";
+import { ssoConfigured } from "../sso/auth.js";
 
 /**
  * Public demo landing page at `/` — a one-pager in the hogsend.com crimzon
@@ -8,11 +9,24 @@ import type { RoutesFn } from "@hogsend/engine";
  *
  * The creds are a public shared demo login (no email provider is configured,
  * so nothing here can send real mail) — embedding them is intentional.
+ *
+ * Dogfood surface (all env-gated, page unchanged when unset): the *.hogsend.com
+ * SSO sign-in slot in the nav, the notification-bell island (same dogfood
+ * engine the docs + course bells poll), and the `demosite.entered` lifecycle
+ * event fired when a signed-in visitor clicks into the demo.
  */
 const DEMO_EMAIL = "demo@hogsend.com";
 const DEMO_PASSWORD = "forgeline-demo-2026";
 const REPO_URL = "https://github.com/dougwithseismic/hogsend-demo";
 const INSTALL_COMMAND = "pnpm dlx create-hogsend@latest my-app";
+
+// The bell island points at the DOGFOOD engine (t.hogsend.com) — the same
+// pair the docs/course navs use. Both values are public by design (the pk_
+// key's allowed_origins must include this site's origin).
+const BELL_API_URL = process.env.HOGSEND_INGEST_URL ?? "";
+const BELL_PK = process.env.HOGSEND_PUBLISHABLE_KEY ?? "";
+const bellEnabled = BELL_API_URL.length > 0 && BELL_PK.startsWith("pk_");
+const ssoEnabled = ssoConfigured();
 
 const FAVICON =
   "data:image/svg+xml," +
@@ -200,6 +214,13 @@ const html = `<!doctype html>
   .nav-links a:hover { color: #fff; }
   .nav-links .ext { display: none; }
   @media (min-width: 640px) { .nav-links .ext { display: inline; } }
+  .nav-auth { display: inline-flex; align-items: center; gap: 10px; font-size: 14px; }
+  .nav-auth a { color: var(--t75); text-decoration: none; }
+  .nav-auth a:hover { color: #fff; }
+  .nav-auth .who { font-family: var(--mono); font-size: 12px; letter-spacing: 0; color: var(--t55); }
+  .nav-auth .out { background: none; border: 0; padding: 0; cursor: pointer; font: inherit; font-size: 13px; color: var(--t40); }
+  .nav-auth .out:hover { color: #fff; }
+  #hs-bell-root { display: inline-flex; align-items: center; }
 
   /* Buttons */
   .btn {
@@ -353,7 +374,11 @@ const html = `<!doctype html>
       </a>
       <nav class="nav-links">
         <a class="ext" href="https://hogsend.com">hogsend.com</a>
+        <a class="ext" href="https://docs.hogsend.com">Docs</a>
+        <a class="ext" href="https://course.hogsend.com">Course</a>
         <a class="ext" href="${REPO_URL}">Source</a>
+        ${ssoEnabled ? '<span class="nav-auth" data-auth-slot><a href="/sign-in">Sign in</a></span>' : ""}
+        ${bellEnabled ? `<span id="hs-bell-root" data-api-url="${BELL_API_URL}" data-pk="${BELL_PK}"></span>` : ""}
         <button class="btn btn-solid" data-enter>Enter the demo</button>
       </nav>
     </div>
@@ -454,7 +479,9 @@ const html = `<!doctype html>
       <span>Forgeline is fictional — the people, repos, and clicks are generated. The engine is real.</span>
       <span class="flinks">
         <a href="https://hogsend.com">Hogsend</a>
+        <a href="https://docs.hogsend.com">Docs</a>
         <a href="https://course.hogsend.com">Course</a>
+        <a href="/cookies">Cookies</a>
         <a href="${REPO_URL}">GitHub</a>
       </span>
     </div>
@@ -463,6 +490,11 @@ const html = `<!doctype html>
 <script>
   async function enter(btn){
     btn.disabled = true; btn.textContent = "Signing in…";
+    // Lifecycle first (keepalive survives the navigation): a signed-in
+    // visitor's click becomes a demosite.entered event on the dogfood engine.
+    try {
+      fetch("/api/demo/entered", { method: "POST", credentials: "include", keepalive: true });
+    } catch (e) { /* best-effort */ }
     try {
       await fetch("/api/auth/sign-in/email", {
         method: "POST", credentials: "include",
@@ -484,7 +516,33 @@ const html = `<!doctype html>
       } catch (e) { /* clipboard unavailable — leave the command selectable */ }
     });
   }
+
+  // *.hogsend.com SSO slot: someone signed in on hogsend.com or the course is
+  // already signed in here (shared cookie) — show who, and a way out.
+  const authSlot = document.querySelector("[data-auth-slot]");
+  if (authSlot) {
+    fetch("/api/sso/get-session", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((s) => {
+        if (!s || !s.user) return;
+        authSlot.innerHTML = "";
+        const who = document.createElement("span");
+        who.className = "who";
+        who.textContent = s.user.email;
+        const out = document.createElement("button");
+        out.className = "out";
+        out.type = "button";
+        out.textContent = "Sign out";
+        out.addEventListener("click", async () => {
+          await fetch("/api/sso/sign-out", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: "{}" }).catch(() => {});
+          window.location.reload();
+        });
+        authSlot.append(who, out);
+      })
+      .catch(() => {});
+  }
 </script>
+${bellEnabled ? '<script src="/assets/demo-bell.js" defer></script>' : ""}
 </body>
 </html>`;
 

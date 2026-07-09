@@ -32,6 +32,9 @@ importers:
       '@hogsend/engine':
         specifier: ^0.40.0
         version: 0.40.0(@grpc/grpc-js@1.14.4)(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(drizzle-kit@0.31.10)(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.2)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))
+      '@hogsend/js':
+        specifier: ^0.40.0
+        version: 0.40.0
       '@hogsend/plugin-discord':
         specifier: ^0.40.0
         version: 0.40.0(@grpc/grpc-js@1.14.4)(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(drizzle-kit@0.31.10)(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.2)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))
@@ -44,9 +47,12 @@ importers:
       '@hogsend/plugin-telegram':
         specifier: ^0.40.0
         version: 0.40.0(@grpc/grpc-js@1.14.4)(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(drizzle-kit@0.31.10)(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.2)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))
+      '@hogsend/react':
+        specifier: ^0.40.0
+        version: 0.40.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@hogsend/studio':
         specifier: ^0.40.0
-        version: 0.40.0(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9))(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))(zod@4.4.3)
+        version: 0.40.0(@opentelemetry/api@1.9.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9))(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))(zod@4.4.3)
       '@hono/node-server':
         specifier: ^2.0.4
         version: 2.0.8(hono@4.12.28)
@@ -117,6 +123,9 @@ importers:
       '@types/react':
         specifier: ^19.2.15
         version: 19.2.17
+      '@types/react-dom':
+        specifier: ^19.2.3
+        version: 19.2.3(@types/react@19.2.17)
       drizzle-kit:
         specifier: ^0.31.10
         version: 0.31.10
@@ -1063,6 +1072,10 @@ packages:
     resolution: {integrity: sha512-N2rlklBwI+1ngebDqSokikYLpCfVqiAM8luPPtiWcP+RgVeAc805bs2ORGymZaSE37Gqp5boU1NNw4Pt5rF9Xw==}
     engines: {node: '>=22'}
 
+  '@hogsend/js@0.40.0':
+    resolution: {integrity: sha512-YekELYXzgb0XB5VkDBZPWffxkdA9qWaMjV4x9WENR4+BDYZ0IO4yHBIgyGuOnatqdoHkFjAFLMdI9lmut/meqg==}
+    engines: {node: '>=22'}
+
   '@hogsend/plugin-discord@0.40.0':
     resolution: {integrity: sha512-z60wl2knzVhAQBC2e0Vo6/azeKKQoNaB5W/u8pxhT2vjuXra64I4uS5EBPkvUXERSgvydt4m3u5Y92MjMNkZqQ==}
     peerDependencies:
@@ -1087,6 +1100,13 @@ packages:
 
   '@hogsend/plugin-telegram@0.40.0':
     resolution: {integrity: sha512-BoXJb6Rg6A4lXl/osLetM4dwmoc44wlA5RPMNWUiDGLV9/enVuoHFu5s1ee3SqTPyF7162isZl1V7c8l9XpYqA==}
+
+  '@hogsend/react@0.40.0':
+    resolution: {integrity: sha512-rSr0A4F453W9xVK/nQHti/MK6tffDU2gCWtDjDE72pLwfjsnXH9eodR6jOcaiE4AzT/WrKFkrki+0SuP6ylL9A==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      react: ^19
+      react-dom: ^19
 
   '@hogsend/studio@0.40.0':
     resolution: {integrity: sha512-YqY0QHhmdRu2VDRMxzEFjs1u2RGbpUBrh0kTQz6tUz5bbOd8qF0n7NIoS8C2ZMqmPXJhcXI3h3hj3qoTEE6FTQ==}
@@ -1578,6 +1598,11 @@ packages:
 
   '@types/qs@6.15.1':
     resolution: {integrity: sha512-GZHUBZR9hckSUhrxmp1nG6NwdpM9fCunJwyThLW1X3AyHgd9IlHb6VANpQQqDr2o/qQp6McZ3y/IA2rVzKzSbw==}
+
+  '@types/react-dom@19.2.3':
+    resolution: {integrity: sha512-jp2L/eY6fn+KgVVQAOqYItbF0VY/YApe5Mz2F0aykSO8gx31bYCZyvSeYxCHKvzHG5eZjc+zyaS5BrBWya2+kQ==}
+    peerDependencies:
+      '@types/react': ^19.2.0
 
   '@types/react@19.2.17':
     resolution: {integrity: sha512-MXfmqaVPEVgkBT/aY0aGCkRWWtByiYQXo3xdQ8r5RzuFrPiRn8Gar2tQdXSUQ2GKV3bkXckek89V8wQBY2Q/Aw==}
@@ -4226,6 +4251,8 @@ snapshots:
       - vitest
       - vue
 
+  '@hogsend/js@0.40.0': {}
+
   '@hogsend/plugin-discord@0.40.0(@grpc/grpc-js@1.14.4)(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(drizzle-kit@0.31.10)(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.2)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))':
     dependencies:
       '@hogsend/engine': 0.40.0(@grpc/grpc-js@1.14.4)(@opentelemetry/api@1.9.1)(@react-email/render@2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(drizzle-kit@0.31.10)(kysely@0.29.3)(postgres@3.4.9)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.2)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))
@@ -4468,7 +4495,13 @@ snapshots:
       - vitest
       - vue
 
-  '@hogsend/studio@0.40.0(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9))(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))(zod@4.4.3)':
+  '@hogsend/react@0.40.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+    dependencies:
+      '@hogsend/js': 0.40.0
+      react: 19.2.7
+      react-dom: 19.2.7(react@19.2.7)
+
+  '@hogsend/studio@0.40.0(@opentelemetry/api@1.9.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9))(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))(zod@4.4.3)':
     dependencies:
       '@ai-sdk/react': 3.0.223(react@19.2.7)(zod@4.4.3)
       '@dagrejs/dagre': 3.0.0
@@ -4477,7 +4510,7 @@ snapshots:
       '@tanstack/react-query': 5.101.2(react@19.2.7)
       '@tanstack/react-router': 1.170.17(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@tanstack/react-virtual': 3.14.5(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
-      '@xyflow/react': 12.11.2(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@xyflow/react': 12.11.2(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       ai: 6.0.221(zod@4.4.3)
       better-auth: 1.6.23(@opentelemetry/api@1.9.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(kysely@0.29.3)(postgres@3.4.9))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.4.2)(tsx@4.23.0)(yaml@2.9.0)))
       class-variance-authority: 0.7.1
@@ -4894,6 +4927,10 @@ snapshots:
 
   '@types/qs@6.15.1': {}
 
+  '@types/react-dom@19.2.3(@types/react@19.2.17)':
+    dependencies:
+      '@types/react': 19.2.17
+
   '@types/react@19.2.17':
     dependencies:
       csstype: 3.2.3
@@ -4953,7 +4990,7 @@ snapshots:
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.0
 
-  '@xyflow/react@12.11.2(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@xyflow/react@12.11.2(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
       '@xyflow/system': 0.0.79
       classcat: 5.0.5
@@ -4962,6 +4999,7 @@ snapshots:
       zustand: 4.5.7(@types/react@19.2.17)(react@19.2.7)
     optionalDependencies:
       '@types/react': 19.2.17
+      '@types/react-dom': 19.2.3(@types/react@19.2.17)
     transitivePeerDependencies:
       - immer
 
