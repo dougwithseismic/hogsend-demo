@@ -2,10 +2,12 @@
  * Forgeline demo seed — populates the database with a realistic Series-A-sized
  * dataset so the Hogsend Studio looks like a thriving credit-based dev-tool SaaS.
  *
- * Everything it writes is scoped to a `demo_` externalId / userId prefix, so it
- * is fully IDEMPOTENT (deletes prior demo rows first) and never touches real
- * data. It writes DIRECTLY to the tables — it does NOT run any journeys, so no
- * real emails / Discord / Telegram messages are ever sent.
+ * Everything it writes is scoped to a `demo_` externalId / userId prefix (plus
+ * the `demo_%` campaign idempotency keys and the fictional @forgeline.dev link
+ * minters), so it is fully IDEMPOTENT (deletes prior demo rows first) and never
+ * touches real data. It writes DIRECTLY to the tables — it does NOT run any
+ * journeys, so no real emails / Discord / Telegram messages are ever sent.
+ * Scheduled campaigns are safe by construction: see the §7b SAFETY note.
  *
  *   DATABASE_URL=... pnpm db:seed
  *
@@ -18,9 +20,13 @@
  * `journey_states.journeyId` / `email_sends.templateKey` / `bucket_memberships.bucketId`
  * that isn't a REGISTERED id renders ZERO. The ids below MUST match
  * `src/journeys/index.ts`, `src/emails/registry.ts`, and `src/buckets/index.ts`.
+ * The same goes for `campaigns.audienceId` (a registered list/bucket id) and
+ * `campaigns.templateKey`.
  */
+import { randomUUID } from "node:crypto";
 import {
   bucketMemberships,
+  campaigns,
   connectorDeliveries,
   contacts,
   emailPreferences,
@@ -29,10 +35,11 @@ import {
   feedItems,
   journeyStates,
   linkClicks,
+  links,
   trackedLinks,
   userEvents,
 } from "@hogsend/db";
-import { like } from "drizzle-orm";
+import { inArray, like } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
@@ -1095,6 +1102,450 @@ const trackedLinkRows: TL[] = Array.from({ length: 40 }, (_, i) => {
 });
 
 // ---------------------------------------------------------------------------
+// 7b. Campaigns (one-shot broadcasts — sent history + upcoming scheduled)
+// ---------------------------------------------------------------------------
+// SAFETY (this seeds a LIVE instance): the engine's campaign reaper PROMOTES
+// any due `scheduled` row into a real send and re-drives stale
+// `queued`/`sending` rows. So this seed writes ONLY terminal statuses
+// (sent/failed/canceled/expired) plus `scheduled` rows whose audience is the
+// OPT-IN `product-updates` list. No demo contact ever gets
+// `categories["product-updates"] = true` (§2 writes `false` or `{}`), and an
+// opt-in list resolves recipients ONLY from explicit `true` rows — so if a
+// scheduled row comes due before the next reseed it completes harmlessly with
+// zero sends. NEVER seed a non-terminal campaign against a BUCKET: bucket
+// audiences resolve real (fake-address) demo contacts and would fire a real
+// provider blast. Cleanup marker = `idempotency_key LIKE 'demo_%'`.
+type CampaignRow = typeof campaigns.$inferInsert;
+
+const inDays = (d: number, h = 0) => new Date(NOW + d * DAY + h * HOUR);
+
+/** Counts for a completed blast: ~2–4% skipped (suppressed), a few failures. */
+const blastCounts = (total: number) => {
+  const skippedCount = Math.round(total * (0.02 + rand() * 0.02));
+  const failedCount = int(0, Math.max(2, Math.round(total * 0.004)));
+  return {
+    totalRecipients: total,
+    sentCount: total - skippedCount - failedCount,
+    skippedCount,
+    failedCount,
+  };
+};
+
+/** A terminal `sent` broadcast; scheduled-then-sent when `wasScheduled`. */
+function sentCampaign(opts: {
+  key: string;
+  name: string;
+  audienceKind: "list" | "bucket";
+  audienceId: string;
+  templateKey: string;
+  subject: string;
+  sentDaysAgo: number;
+  total: number;
+  wasScheduled?: boolean;
+}): CampaignRow {
+  const startedMs = daysAgo(opts.sentDaysAgo);
+  const completedMs = startedMs + int(3, 25) * MIN;
+  return {
+    name: opts.name,
+    status: "sent",
+    audienceKind: opts.audienceKind,
+    audienceId: opts.audienceId,
+    templateKey: opts.templateKey,
+    props: {},
+    fromEmail: "hello@forgeline.dev",
+    subject: opts.subject,
+    idempotencyKey: `demo_${opts.key}`,
+    ...blastCounts(opts.total),
+    scheduledAt: opts.wasScheduled ? at(startedMs) : null,
+    startedAt: at(startedMs + int(0, 2) * MIN),
+    completedAt: at(completedMs),
+    createdAt: at(
+      opts.wasScheduled
+        ? startedMs - int(2, 6) * DAY
+        : startedMs - int(2, 9) * MIN,
+    ),
+    updatedAt: at(completedMs),
+  };
+}
+
+const campaignRows: CampaignRow[] = [
+  // Upcoming — audience MUST stay the opt-in list (see SAFETY above).
+  {
+    name: "July product updates",
+    status: "scheduled",
+    audienceKind: "list",
+    audienceId: "product-updates",
+    templateKey: "weekly-digest",
+    props: {},
+    fromEmail: "hello@forgeline.dev",
+    subject: "Forgeline in July: parallel reviews, faster queues",
+    idempotencyKey: "demo_c_updates_jul",
+    scheduledAt: inDays(4, 9),
+    createdAt: at(daysAgo(2)),
+    updatedAt: at(daysAgo(2)),
+  },
+  {
+    name: "Summer credits promo — 500 free credits",
+    status: "scheduled",
+    audienceKind: "list",
+    audienceId: "product-updates",
+    templateKey: "winback-offer",
+    props: {},
+    fromEmail: "hello@forgeline.dev",
+    subject: "500 free build credits for the summer lull",
+    idempotencyKey: "demo_c_summer_promo",
+    scheduledAt: inDays(9, 6),
+    createdAt: at(daysAgo(1)),
+    updatedAt: at(daysAgo(1)),
+  },
+  {
+    name: "August product updates",
+    status: "scheduled",
+    audienceKind: "list",
+    audienceId: "product-updates",
+    templateKey: "weekly-digest",
+    props: {},
+    fromEmail: "hello@forgeline.dev",
+    subject: "Forgeline in August",
+    idempotencyKey: "demo_c_updates_aug",
+    scheduledAt: inDays(32, 2),
+    createdAt: at(daysAgo(0, 6)),
+    updatedAt: at(daysAgo(0, 6)),
+  },
+  // Sent history — newsletters to the list (growing audience) + bucket blasts.
+  sentCampaign({
+    key: "c_launch_v2",
+    name: "Forgeline 2.0 launch announcement",
+    audienceKind: "list",
+    audienceId: "product-updates",
+    templateKey: "weekly-digest",
+    subject: "Forgeline 2.0: parallel AI reviews are here",
+    sentDaysAgo: 12,
+    total: 2214,
+    wasScheduled: true,
+  }),
+  sentCampaign({
+    key: "c_updates_jun",
+    name: "June product updates",
+    audienceKind: "list",
+    audienceId: "product-updates",
+    templateKey: "weekly-digest",
+    subject: "Forgeline in June: review queues + Slack digests",
+    sentDaysAgo: 26,
+    total: 2168,
+    wasScheduled: true,
+  }),
+  sentCampaign({
+    key: "c_updates_may",
+    name: "May product updates",
+    audienceKind: "list",
+    audienceId: "product-updates",
+    templateKey: "weekly-digest",
+    subject: "Forgeline in May: monorepo support lands",
+    sentDaysAgo: 57,
+    total: 2041,
+    wasScheduled: true,
+  }),
+  sentCampaign({
+    key: "c_updates_apr",
+    name: "April product updates",
+    audienceKind: "list",
+    audienceId: "product-updates",
+    templateKey: "weekly-digest",
+    subject: "Forgeline in April: credit packs + usage alerts",
+    sentDaysAgo: 88,
+    total: 1876,
+    wasScheduled: true,
+  }),
+  sentCampaign({
+    key: "c_winback_quiet",
+    name: "Win-back: quiet repos, 500 free credits",
+    audienceKind: "bucket",
+    audienceId: "dormant-repos",
+    templateKey: "winback-offer",
+    subject: "500 free credits to pick back up",
+    sentDaysAgo: 8,
+    total: 236,
+  }),
+  sentCampaign({
+    key: "c_topup_low",
+    name: "Top-up nudge: low-credit workspaces",
+    audienceKind: "bucket",
+    audienceId: "low-credits",
+    templateKey: "credits-topup-nudge",
+    subject: "You're through 80% of this month's build credits",
+    sentDaysAgo: 3,
+    total: 412,
+  }),
+  sentCampaign({
+    key: "c_seats_power",
+    name: "Seat expansion push: power teams",
+    audienceKind: "bucket",
+    audienceId: "power-teams",
+    templateKey: "expansion-add-seats",
+    subject: "Your team is reviewing a lot of PRs",
+    sentDaysAgo: 18,
+    total: 174,
+  }),
+  // Operator canceled a blast the day before it was due (terminal — safe).
+  {
+    name: "Trial-ending discount blast",
+    status: "canceled",
+    audienceKind: "bucket",
+    audienceId: "trial-ending",
+    templateKey: "winback-offer",
+    props: {},
+    fromEmail: "hello@forgeline.dev",
+    subject: "Your trial ends soon — 20% off the first quarter",
+    idempotencyKey: "demo_c_trial_discount",
+    scheduledAt: inDays(1, 3),
+    canceledAt: at(daysAgo(1)),
+    createdAt: at(daysAgo(3)),
+    updatedAt: at(daysAgo(1)),
+  },
+  // A blast that errored mid-run and hit the reaper's give-up window.
+  {
+    name: "Spring re-engagement re-send",
+    status: "failed",
+    audienceKind: "bucket",
+    audienceId: "dormant-repos",
+    templateKey: "winback-repo-quiet",
+    props: {},
+    fromEmail: "hello@forgeline.dev",
+    subject: "Your repo's gone quiet",
+    idempotencyKey: "demo_c_spring_resend",
+    totalRecipients: 397,
+    sentCount: 121,
+    skippedCount: 9,
+    failedCount: 4,
+    startedAt: at(daysAgo(34)),
+    completedAt: at(daysAgo(34) + 6 * HOUR),
+    createdAt: at(daysAgo(34) - 10 * MIN),
+    updatedAt: at(daysAgo(34) + 6 * HOUR),
+  },
+  // A code-defined campaign whose sendAt was already stale at first reconcile.
+  {
+    name: "Launch week teaser",
+    status: "expired",
+    audienceKind: "list",
+    audienceId: "product-updates",
+    templateKey: "weekly-digest",
+    props: {},
+    fromEmail: "hello@forgeline.dev",
+    subject: "Something big lands next week",
+    idempotencyKey: "demo_c_launch_teaser",
+    scheduledAt: at(daysAgo(41)),
+    createdAt: at(daysAgo(44)),
+    updatedAt: at(daysAgo(41)),
+  },
+];
+
+// ---------------------------------------------------------------------------
+// 7c. Managed links (Studio "Links" view — ~15 links, ~4,500 clicks)
+// ---------------------------------------------------------------------------
+// A managed link is a `links` row plus ONE `tracked_links` row pointing back
+// via `link_id` (the Studio view sums `click_count` on read; the detail view
+// lists recent `link_clicks`). Every demo link is minted by a fictional
+// @forgeline.dev operator — `created_by` is the cleanup marker (visitor-minted
+// links carry the real Studio session email, so reseeds never touch them).
+type ManagedLinkCfg = {
+  label: string;
+  url: string;
+  campaign: string | null;
+  source: "studio" | "discord" | "referral";
+  type: "public" | "personal";
+  clicks: number;
+  createdDaysAgo: number;
+  archived?: boolean;
+};
+
+const MANAGED_LINKS: ManagedLinkCfg[] = [
+  // Launch week — the 2.0 announcement fan-out.
+  {
+    label: "Launch post — blog",
+    url: "https://forgeline.dev/blog/forgeline-2-0",
+    campaign: "launch-week",
+    source: "studio",
+    type: "public",
+    clicks: 914,
+    createdDaysAgo: 13,
+  },
+  {
+    label: "Launch — Hacker News thread",
+    url: "https://news.ycombinator.com/item?id=44712083",
+    campaign: "launch-week",
+    source: "studio",
+    type: "public",
+    clicks: 638,
+    createdDaysAgo: 12,
+  },
+  {
+    label: "Launch — X announcement",
+    url: "https://x.com/forgelinedev/status/1943281907542118400",
+    campaign: "launch-week",
+    source: "studio",
+    type: "public",
+    clicks: 402,
+    createdDaysAgo: 12,
+  },
+  {
+    label: "Launch — changelog entry",
+    url: "https://forgeline.dev/changelog/2-0",
+    campaign: "launch-week",
+    source: "studio",
+    type: "public",
+    clicks: 187,
+    createdDaysAgo: 12,
+  },
+  // Evergreen site/docs.
+  {
+    label: "Docs quickstart",
+    url: "https://forgeline.dev/docs/quickstart",
+    campaign: "docs",
+    source: "studio",
+    type: "public",
+    clicks: 358,
+    createdDaysAgo: 96,
+  },
+  {
+    label: "Pricing",
+    url: "https://forgeline.dev/pricing",
+    campaign: "site",
+    source: "studio",
+    type: "public",
+    clicks: 264,
+    createdDaysAgo: 120,
+  },
+  {
+    label: "Case study — Corewave",
+    url: "https://forgeline.dev/customers/corewave",
+    campaign: "content",
+    source: "studio",
+    type: "public",
+    clicks: 143,
+    createdDaysAgo: 61,
+  },
+  // Community.
+  {
+    label: "Discord invite",
+    url: "https://discord.gg/forgeline",
+    campaign: "community",
+    source: "discord",
+    type: "public",
+    clicks: 517,
+    createdDaysAgo: 140,
+  },
+  {
+    label: "Office hours signup",
+    url: "https://forgeline.dev/office-hours",
+    campaign: "community",
+    source: "discord",
+    type: "public",
+    clicks: 122,
+    createdDaysAgo: 33,
+  },
+  // Lifecycle.
+  {
+    label: "Referral program",
+    url: "https://forgeline.dev/refer",
+    campaign: "referrals",
+    source: "referral",
+    type: "public",
+    clicks: 341,
+    createdDaysAgo: 88,
+  },
+  {
+    label: "June newsletter CTA",
+    url: "https://forgeline.dev/blog/june-roundup",
+    campaign: "newsletter-jun",
+    source: "studio",
+    type: "public",
+    clicks: 289,
+    createdDaysAgo: 26,
+  },
+  {
+    label: "Credits top-up promo",
+    url: "https://forgeline.dev/billing/credits?promo=topup20",
+    campaign: "dunning",
+    source: "studio",
+    type: "public",
+    clicks: 176,
+    createdDaysAgo: 47,
+  },
+  // Personal (identity-bearing 1:1 links).
+  {
+    label: "Renewal follow-up — Northstar",
+    url: "https://forgeline.dev/billing/renew",
+    campaign: null,
+    source: "studio",
+    type: "personal",
+    clicks: 6,
+    createdDaysAgo: 9,
+  },
+  {
+    label: "Onboarding call recap — Kettle",
+    url: "https://forgeline.dev/docs/quickstart#connect-a-repo",
+    campaign: null,
+    source: "studio",
+    type: "personal",
+    clicks: 3,
+    createdDaysAgo: 5,
+  },
+  // Retired.
+  {
+    label: "Spring promo (retired)",
+    url: "https://forgeline.dev/spring",
+    campaign: "spring-promo",
+    source: "studio",
+    type: "public",
+    clicks: 208,
+    createdDaysAgo: 105,
+    archived: true,
+  },
+];
+
+const managedLinkRows: (typeof links.$inferInsert)[] = [];
+const managedTrackedRows: (typeof trackedLinks.$inferInsert)[] = [];
+const managedClickPlan: {
+  trackedLinkId: string;
+  clicks: number;
+  createdMs: number;
+}[] = [];
+
+for (const m of MANAGED_LINKS) {
+  const linkId = randomUUID();
+  const trackedLinkId = randomUUID();
+  const createdMs = daysAgo(m.createdDaysAgo);
+  const distinctId = m.type === "personal" ? pick(people).externalId : null;
+  managedLinkRows.push({
+    id: linkId,
+    originalUrl: m.url,
+    type: m.type,
+    label: m.label,
+    campaign: m.campaign,
+    source: m.source,
+    distinctId,
+    createdBy: pick(["demo@forgeline.dev", "ops@forgeline.dev"]),
+    archivedAt: m.archived ? at(daysAgo(int(2, 14))) : null,
+    createdAt: at(createdMs),
+    updatedAt: at(createdMs),
+  });
+  // Mirrors mintLink: one tracked row per managed link, source copied verbatim.
+  managedTrackedRows.push({
+    id: trackedLinkId,
+    linkId,
+    emailSendId: null,
+    distinctId,
+    source: m.source,
+    originalUrl: m.url,
+    clickCount: m.clicks,
+    createdAt: at(createdMs),
+    updatedAt: at(createdMs),
+  });
+  managedClickPlan.push({ trackedLinkId, clicks: m.clicks, createdMs });
+}
+
+// ---------------------------------------------------------------------------
 // 8. Feed items (in-app bell history, ~7,800)
 // ---------------------------------------------------------------------------
 type FI = typeof feedItems.$inferInsert;
@@ -1278,6 +1729,24 @@ async function main() {
     .delete(connectorDeliveries)
     .where(like(connectorDeliveries.dedupeKey, "demo_cd_%"));
   await db.delete(trackedLinks).where(like(trackedLinks.source, "demo-email"));
+  // Managed demo links: the tracked rows must go FIRST (the links FK is ON
+  // DELETE set null — deleting `links` first would orphan them past cleanup),
+  // and deleting a tracked row cascades its link_clicks. Marker = the
+  // fictional @forgeline.dev minter (visitor-minted links carry the real
+  // Studio session email and are never touched).
+  await db
+    .delete(trackedLinks)
+    .where(
+      inArray(
+        trackedLinks.linkId,
+        db
+          .select({ id: links.id })
+          .from(links)
+          .where(like(links.createdBy, "%@forgeline.dev")),
+      ),
+    );
+  await db.delete(links).where(like(links.createdBy, "%@forgeline.dev"));
+  await db.delete(campaigns).where(like(campaigns.idempotencyKey, "demo_%"));
   await db.delete(contacts).where(like(contacts.externalId, "demo_%"));
 
   // 2) Contacts
@@ -1336,26 +1805,55 @@ async function main() {
       .returning({ id: trackedLinks.id });
     insertedLinkIds.push(...ret.map((r) => r.id));
   }
+  // 8b) Managed links (Studio "Links" view): links + 1:1 tracked rows.
+  await chunkInsert(managedLinkRows, (batch) => db.insert(links).values(batch));
+  await chunkInsert(managedTrackedRows, (batch) =>
+    db.insert(trackedLinks).values(batch),
+  );
+
+  // 8c) Clicks for both email-rewrite and managed links.
+  const UAS = [
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/124",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5) Safari/605",
+  ] as const;
+  const randomIp = () =>
+    `${int(11, 210)}.${int(0, 255)}.${int(0, 255)}.${int(1, 254)}`;
   const clickRows: (typeof linkClicks.$inferInsert)[] = [];
   insertedLinkIds.forEach((linkId, k) => {
     const n = linkClickCounts[k] ?? 0;
     for (let i = 0; i < n; i++) {
       clickRows.push({
         trackedLinkId: linkId,
-        ipAddress: `${int(11, 210)}.${int(0, 255)}.${int(0, 255)}.${int(1, 254)}`,
-        userAgent: pick([
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/124",
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124",
-          "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5) Safari/605",
-        ]),
+        ipAddress: randomIp(),
+        userAgent: pick(UAS),
         clickedAt: at(NOW - recentDaysAgo(WINDOW_DAYS, 1.4) * DAY),
       });
     }
   });
+  // Managed links: clicks land between the link's mint time and now,
+  // recent-weighted so fresh links look alive in the detail view.
+  for (const plan of managedClickPlan) {
+    for (let i = 0; i < plan.clicks; i++) {
+      clickRows.push({
+        trackedLinkId: plan.trackedLinkId,
+        ipAddress: randomIp(),
+        userAgent: pick(UAS),
+        clickedAt: at(
+          plan.createdMs + (1 - rand() ** 1.4) * (NOW - plan.createdMs),
+        ),
+      });
+    }
+  }
   await chunkInsert(
     clickRows,
     (batch) => db.insert(linkClicks).values(batch),
     1000,
+  );
+
+  // 8d) Campaigns (broadcast history + upcoming scheduled sends).
+  await chunkInsert(campaignRows, (batch) =>
+    db.insert(campaigns).values(batch),
   );
 
   // 9) Feed items — link ~85% to a journey state.
@@ -1379,7 +1877,7 @@ async function main() {
   );
 
   console.log(
-    `Inserted: ${people.length} contacts · ${insertedStateIds.length} journey states · ${sendRows.length} email sends · ${eventRows.length} events · ${bucketRows.length} bucket memberships · ${insertedLinkIds.length} links / ${clickRows.length} clicks · ${feedRows.length} feed items · ${connectorRows.length} connector deliveries.`,
+    `Inserted: ${people.length} contacts · ${insertedStateIds.length} journey states · ${sendRows.length} email sends · ${eventRows.length} events · ${bucketRows.length} bucket memberships · ${insertedLinkIds.length} email links + ${managedLinkRows.length} managed links / ${clickRows.length} clicks · ${campaignRows.length} campaigns · ${feedRows.length} feed items · ${connectorRows.length} connector deliveries.`,
   );
   console.log("Forgeline demo seed complete.");
 }
