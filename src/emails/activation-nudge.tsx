@@ -1,46 +1,30 @@
 // biome-ignore lint/correctness/noUnusedImports: required for JSX runtime
 import React from "react";
-import { Text } from "react-email";
 import { Layout } from "./_components/layout.js";
-import { Body, Button, Callout, Title } from "./_components/ui.js";
+import { Body, Button, Divider, Title } from "./_components/ui.js";
 import type { ActivationNudgeEmailProps } from "./types.js";
 
-// Starter template — CONTENT, yours to edit. Rendered for the `activation/nudge`
-// key (see `./registry.ts`). Delete or rewrite freely.
+// Rendered for the `activation-nudge` key — last-touch nudge for workspaces
+// that still haven't connected a repo.
 export default function ActivationNudgeEmail({
   name = "there",
-  featureName = "the key feature",
-  nudgeMessage = "Most users see results within their first session. Here's how to get started.",
-  ctaUrl = "https://app.example.com",
-  ctaText = "Try it now",
-  helpUrl,
+  connectUrl = "https://forgeline.dev/connect",
   unsubscribeUrl,
 }: ActivationNudgeEmailProps) {
   return (
     <Layout
-      preview={`You haven't tried ${featureName} yet`}
-      eyebrow="A quick nudge"
+      preview="Still haven't connected a repo? Here's the one-minute path."
+      eyebrow="One step left"
       unsubscribeUrl={unsubscribeUrl}
     >
-      <Title>You haven't tried {featureName} yet</Title>
-      <Body>Hey {name},</Body>
-      <Body>{nudgeMessage}</Body>
-      <Button href={ctaUrl}>{ctaText}</Button>
-
-      {helpUrl && (
-        <Callout tone="warn">
-          <Text className="m-0 text-sm leading-6 text-amber-900">
-            Having trouble getting set up?{" "}
-            <a
-              href={helpUrl}
-              className="font-semibold text-amber-950 underline"
-            >
-              Check out our setup guide
-            </a>{" "}
-            or reply to this email — we're happy to help.
-          </Text>
-        </Callout>
-      )}
+      <Title>Still haven't connected a repo?</Title>
+      <Body>
+        Hi {name} — no pressure, but your credits are sitting idle. The moment a
+        repo is connected, Forgeline reviews the next PR automatically. That's
+        the whole setup.
+      </Body>
+      <Divider />
+      <Button href={connectUrl}>Connect a repo</Button>
     </Layout>
   );
 }

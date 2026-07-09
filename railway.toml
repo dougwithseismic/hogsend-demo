@@ -7,7 +7,10 @@ watchPatterns = ["src/**", "migrations/**", "package.json", "pnpm-lock.yaml", "r
 # `scripts/migrate.ts` runs both in order and skips an empty client track
 # gracefully. Engine MUST succeed before the API boots (boot guard in
 # src/index.ts hard-requires the engine schema).
-preDeployCommand = "pnpm db:migrate"
+# Then (re)seed the Forgeline demo dataset — idempotent (demo_%-scoped) and
+# time-relative, so every deploy refreshes it to look like the last
+# SEED_WINDOW_DAYS. This is a demo instance; the seed is the content.
+preDeployCommand = "pnpm db:migrate && pnpm db:seed"
 startCommand = "pnpm start"
 healthcheckPath = "/v1/health"
 healthcheckTimeout = 120

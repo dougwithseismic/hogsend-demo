@@ -11,7 +11,7 @@ export function Footer({ unsubscribeUrl, preferencesUrl }: FooterProps) {
   return (
     <Section className="px-2 py-6">
       <Text className="m-0 text-xs leading-5 text-zinc-400">
-        Sent by {"hogsend-demo"}
+        Sent by {"Forgeline"} · AI code review + CI on build credits
       </Text>
       {(unsubscribeUrl || preferencesUrl) && (
         <Text className="m-0 mt-1 text-xs leading-5 text-zinc-400">

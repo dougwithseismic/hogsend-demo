@@ -2,28 +2,20 @@ import { createServer } from "node:http";
 import {
   bootstrapApiKeyFromEnv,
   createApp,
-  createHogsendClient,
   getEngineSchemaVersion,
   getPostHog,
   getRedisIfConnected,
   reportApiReady,
 } from "@hogsend/engine";
 import { serve } from "@hono/node-server";
-import { buckets } from "./buckets/index.js";
-import { destinations } from "./destinations/index.js";
-import { templates } from "./emails/index.js";
-import { journeys } from "./journeys/index.js";
-import { lists } from "./lists/index.js";
+import { createClient } from "./container.js";
 import { routes } from "./routes/index.js";
 import { webhookSources } from "./webhook-sources/index.js";
 
-const client = createHogsendClient({
-  journeys,
-  buckets,
-  lists,
-  destinations,
-  email: { templates },
-});
+// Shared DI client (see src/container.ts) — registers journeys, buckets, lists,
+// templates, and the Discord/Telegram connector actions the multi-channel
+// journeys call via `sendConnectorAction`.
+const client = createClient();
 
 // Refuse to serve when the database schema is behind what this build requires.
 // `preDeployCommand` runs migrations before boot, so reaching here out of sync

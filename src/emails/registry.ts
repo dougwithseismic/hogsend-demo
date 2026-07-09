@@ -1,105 +1,137 @@
 import type { TemplateRegistry } from "@hogsend/email";
+import ActivationConnectRepoEmail from "./activation-connect-repo.js";
+import ActivationFirstReviewEmail from "./activation-first-review.js";
 import ActivationNudgeEmail from "./activation-nudge.js";
-import FeedbackCheckinEmail from "./feedback-checkin.js";
+import CreditsDepletedEmail from "./credits-depleted.js";
+import CreditsLowBalanceEmail from "./credits-low-balance.js";
+import CreditsReceiptEmail from "./credits-receipt.js";
+import CreditsTopupNudgeEmail from "./credits-topup-nudge.js";
+import ExpansionAddSeatsEmail from "./expansion-add-seats.js";
+import ExpansionUsageMilestoneEmail from "./expansion-usage-milestone.js";
+import FeedbackNpsEmail from "./feedback-nps.js";
 import MagicLinkEmail from "./magic-link.js";
-import OnboardingNudgeEmail from "./onboarding-nudge.js";
-import OnboardingPersonalizedEmail from "./onboarding-personalized.js";
-import ProductUpdateEmail from "./product-update.js";
-import ReceiptEmail from "./receipt.js";
-import TrialExpiringEmail from "./trial-expiring.js";
+import WeeklyDigestEmail from "./weekly-digest.js";
 import WelcomeEmail from "./welcome.js";
+import WinbackOfferEmail from "./winback-offer.js";
+import WinbackRepoQuietEmail from "./winback-repo-quiet.js";
 
-// Your app's template registry — CONTENT. Maps each template key to its
+// Forgeline's template registry — CONTENT. Maps each template key to its
 // component + default subject + category (+ optional preview text). Passed to
-// `createHogsendClient({ email: { templates } })`, which threads it through the engine's
-// `TrackedMailer` to `getTemplate(..., { registry })` at send + render time.
+// `createHogsendClient({ email: { templates } })`, which threads it through the
+// engine's `TrackedMailer` to `getTemplate(..., { registry })` at send + render.
 //
-// The keys here MUST match the keys augmented into `@hogsend/email`'s
-// `TemplateRegistryMap` (see `./templates.d.ts`) for `send({ template, props })`
-// to type-check. They also match the `Templates` constants journeys send with
-// (see `src/journeys/constants/index.ts`).
+// The keys MUST match the keys augmented into `@hogsend/email`'s
+// `TemplateRegistryMap` (see `./templates.d.ts`) and the `Templates` constants
+// journeys send with (see `src/journeys/constants/index.ts`).
 //
-// These are starters covering the three send modes — add, delete, or rename
-// freely. The `category` is what the mailer's suppression + frequency-cap checks
-// key off:
+// `category` drives suppression/frequency caps:
 //   - "transactional"  always delivers (exempt from list/category suppression)
-//   - "journey"        normal lifecycle category
-//   - a LIST id (e.g. "product-updates")  ties a broadcast to that list's opt-in
-//     (see `productUpdates` in `src/lists/index.ts`)
+//   - "journey"        normal lifecycle category (unsubscribe honored)
 export const templates: TemplateRegistry = {
-  // AI onboarding — personalised welcome + day-3 nudge (ai-onboarding journey).
-  "onboarding/personalized": {
-    component: OnboardingPersonalizedEmail,
-    defaultSubject: "Welcome — here's where to start",
-    category: "journey",
-    preview: (props) =>
-      `${props.name ?? "there"}, a quick note personalized for you.`,
-    examples: {
-      name: "Ada",
-      body: "Based on your setup, here's where we'd suggest you start.",
-      tips: ["Define your first journey", "Connect your data source"],
-    },
-  },
-  "onboarding/nudge": {
-    component: OnboardingNudgeEmail,
-    defaultSubject: "Still haven't tried it?",
-    category: "journey",
-    preview: (props) =>
-      `${props.name ?? "there"}, you haven't activated the key feature yet.`,
-    examples: { name: "Ada", featureName: "the key feature" },
-  },
-
-  // Feedback — semantic yes/no links (sent from the feedback-checkin journey).
-  "feedback/checkin": {
-    component: FeedbackCheckinEmail,
-    defaultSubject: "Quick check-in — how's it going?",
-    category: "journey",
-    preview: (props) => `${props.name}, one-tap question`,
-  },
-
-  // Activation (sent from the bundled `welcome` journey).
-  "activation/welcome": {
+  // --- Transactional ---
+  welcome: {
     component: WelcomeEmail,
-    defaultSubject: "Welcome to hogsend-demo",
+    defaultSubject: "Welcome to Forgeline",
     category: "transactional",
-    preview: (props) => `Welcome to hogsend-demo, ${props.name}!`,
+    preview: (props) => `Welcome to Forgeline, ${props.name}`,
+    examples: { name: "Ada", startingCredits: 100 },
   },
-  "activation/nudge": {
-    component: ActivationNudgeEmail,
-    defaultSubject: "You haven't tried the key feature yet",
-    category: "journey",
-    preview: (props) => `${props.name}, you're missing out`,
-  },
-
-  // Transactional — sent one-off via `hs.emails.send`.
-  "transactional/magic-link": {
+  "magic-link": {
     component: MagicLinkEmail,
-    defaultSubject: "Your sign-in link",
+    defaultSubject: "Your Forgeline sign-in link",
     category: "transactional",
     preview: () => "Your one-tap sign-in link (expires soon)",
   },
-  "transactional/receipt": {
-    component: ReceiptEmail,
-    defaultSubject: "Your receipt",
+  "credits-receipt": {
+    component: CreditsReceiptEmail,
+    defaultSubject: "Your Forgeline credit pack receipt",
     category: "transactional",
-    preview: (props) => `Receipt ${props.invoiceNumber} — ${props.amount}`,
+    preview: (props) => `Receipt for your ${props.packName} — ${props.amount}`,
+    examples: { packName: "5,000 credits", amount: "$40.00", credits: 5000 },
   },
 
-  // Lifecycle — sent from the bundled `trial-expiring` journey.
-  "lifecycle/trial-expiring": {
-    component: TrialExpiringEmail,
-    defaultSubject: "Your trial is ending soon",
+  // --- Activation ---
+  "activation-connect-repo": {
+    component: ActivationConnectRepoEmail,
+    defaultSubject: "Connect your first repo to start reviewing",
+    category: "journey",
+    preview: (props) => `${props.name}, connect a repo to start reviewing`,
+  },
+  "activation-first-review": {
+    component: ActivationFirstReviewEmail,
+    defaultSubject: "Your first AI review is in ✅",
+    category: "journey",
+    preview: (props) => `${props.name}, your first AI review is in`,
+  },
+  "activation-nudge": {
+    component: ActivationNudgeEmail,
+    defaultSubject: "Still haven't connected a repo?",
+    category: "journey",
+    preview: (props) => `${props.name}, one step left to start reviewing`,
+  },
+
+  // --- Credits / dunning ---
+  "credits-topup-nudge": {
+    component: CreditsTopupNudgeEmail,
+    defaultSubject: "You're through 80% of this month's build credits",
     category: "journey",
     preview: (props) =>
-      `${props.daysLeft ?? 3} day${(props.daysLeft ?? 3) === 1 ? "" : "s"} left in your trial`,
+      `${props.name}, ${props.usedPct ?? 80}% of credits used`,
+  },
+  "credits-low-balance": {
+    component: CreditsLowBalanceEmail,
+    defaultSubject: "Low on build credits",
+    category: "journey",
+    preview: (props) => `${props.name}, top up before pipelines pause`,
+  },
+  "credits-depleted": {
+    component: CreditsDepletedEmail,
+    defaultSubject: "Your pipelines are paused — out of credits",
+    category: "journey",
+    preview: (props) => `${props.name}, pipelines paused — out of credits`,
   },
 
-  // Marketing — broadcast to a list via `hs.campaigns.send`.
-  // `category` MUST match the list id so suppression respects the opt-in.
-  "marketing/product-update": {
-    component: ProductUpdateEmail,
-    defaultSubject: "What's new at hogsend-demo",
-    category: "product-updates",
-    preview: (props) => props.headline,
+  // --- Expansion ---
+  "expansion-usage-milestone": {
+    component: ExpansionUsageMilestoneEmail,
+    defaultSubject: "50 PRs reviewed this month 🎉",
+    category: "journey",
+    preview: (props) => `${props.prsReviewed ?? 50} PRs reviewed this month`,
+  },
+  "expansion-add-seats": {
+    component: ExpansionAddSeatsEmail,
+    defaultSubject: "Your team is reviewing a lot of PRs",
+    category: "journey",
+    preview: (props) => `${props.name}, add seats to keep up`,
+  },
+
+  // --- Winback ---
+  "winback-repo-quiet": {
+    component: WinbackRepoQuietEmail,
+    defaultSubject: "Your repo's gone quiet",
+    category: "journey",
+    preview: (props) => `${props.name}, your repo's gone quiet`,
+  },
+  "winback-offer": {
+    component: WinbackOfferEmail,
+    defaultSubject: "500 free credits to pick back up",
+    category: "journey",
+    preview: (props) => `${props.bonusCredits ?? 500} free credits to restart`,
+  },
+
+  // --- Feedback + digest ---
+  "feedback-nps": {
+    component: FeedbackNpsEmail,
+    defaultSubject: "Quick one — how's Forgeline treating you?",
+    category: "journey",
+    preview: (props) =>
+      `${props.name}, one-tap: would you recommend Forgeline?`,
+  },
+  "weekly-digest": {
+    component: WeeklyDigestEmail,
+    defaultSubject: "Your Forgeline week: 84 reviews, 3 issues caught",
+    category: "journey",
+    preview: (props) =>
+      `Your week: ${props.reviews ?? 84} reviews, ${props.issuesCaught ?? 3} issues caught`,
   },
 };

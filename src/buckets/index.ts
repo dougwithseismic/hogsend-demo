@@ -1,16 +1,19 @@
-import { powerUsers } from "./power-users.js";
+import { dormantRepos } from "./dormant-repos.js";
+import { lowCredits } from "./low-credits.js";
+import { powerTeams } from "./power-teams.js";
+import { trialEnding } from "./trial-ending.js";
 
 /**
- * All defined buckets for this app. Passed to `createHogsendClient({ buckets })`
- * and `createWorker({ buckets })`. Edit freely — this is your content.
+ * All defined buckets for Forgeline. Passed to `createHogsendClient({ buckets })`
+ * and `createWorker({ buckets })`.
  *
  * No `DefinedBucket[]` annotation: that base type re-widens each bucket's `id`
  * literal back to `string` and erases the typed `bucket.entered` / `bucket.left`
  * refs. Letting the array infer keeps every member's literal id (e.g.
- * `powerUsers.entered` stays `"bucket:entered:power-users"`). A `DefinedBucket<Id>`
- * is still assignable to the base `DefinedBucket[]` the factories accept.
+ * `powerTeams.entered` stays `"bucket:entered:power-teams"`), so journeys can
+ * bind to a bucket transition with full typo-safety.
  */
-export const buckets = [powerUsers];
+export const buckets = [powerTeams, lowCredits, trialEnding, dormantRepos];
 
-// Re-export individual buckets for direct reference (tests, custom wiring).
-export { powerUsers };
+// Re-export individual buckets for direct reference (journey triggers, tests).
+export { dormantRepos, lowCredits, powerTeams, trialEnding };

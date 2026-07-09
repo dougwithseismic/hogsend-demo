@@ -1,30 +1,41 @@
 import type { DefinedJourney } from "@hogsend/engine";
-import { aiOnboarding } from "./ai-onboarding.js";
-import { feedbackCheckin } from "./feedback-checkin.js";
+import { activationConnectRepo } from "./activation-connect-repo.js";
+import { activationFirstReview } from "./activation-first-review.js";
+import { creditsDunning } from "./credits-dunning.js";
+import { creditsTopupNudge } from "./credits-topup-nudge.js";
+import { expansionSeats } from "./expansion-seats.js";
+import { feedbackNps } from "./feedback-nps.js";
 import { testOnboarding } from "./test-onboarding.js";
-import { trialExpiring } from "./trial-expiring.js";
-import { welcome } from "./welcome.js";
+import { winbackRepoQuiet } from "./winback-repo-quiet.js";
 
 /**
- * All defined journeys for this app. Passed to `createHogsendClient({ journeys })`
- * and `createWorker({ journeys })`. Edit freely — this is your content.
+ * All Forgeline journeys. Passed to `createHogsendClient({ journeys })` and
+ * `createWorker({ journeys })`. Each fans out across email + the in-app bell +
+ * Discord/Telegram (see the individual files).
  *
- * `aiOnboarding` requires ANTHROPIC_API_KEY — set it in .env (see .env.example)
- * or remove the journey if you're not using the AI tier yet.
+ * The registered ids here are the contract the demo seed matches — a
+ * `journey_states.journeyId` that isn't one of these renders ZERO in the Studio
+ * journeys metric.
  */
 export const journeys: DefinedJourney[] = [
-  aiOnboarding,
-  welcome,
-  trialExpiring,
-  feedbackCheckin,
+  activationConnectRepo,
+  activationFirstReview,
+  creditsTopupNudge,
+  creditsDunning,
+  expansionSeats,
+  winbackRepoQuiet,
+  feedbackNps,
   testOnboarding,
 ];
 
 // Re-export individual journeys for direct reference (tests, custom wiring).
 export {
-  aiOnboarding,
-  feedbackCheckin,
+  activationConnectRepo,
+  activationFirstReview,
+  creditsDunning,
+  creditsTopupNudge,
+  expansionSeats,
+  feedbackNps,
   testOnboarding,
-  trialExpiring,
-  welcome,
+  winbackRepoQuiet,
 };
