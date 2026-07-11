@@ -1,7 +1,8 @@
 {
-  "cliVersion": "0.39.0",
+  "cliVersion": "0.41.0",
   "skills": [
     "hogsend-authoring-buckets",
+    "hogsend-authoring-campaigns",
     "hogsend-authoring-destinations",
     "hogsend-authoring-emails",
     "hogsend-authoring-journeys",
@@ -16,5 +17,5 @@
     "hogsend-migrate",
     "hogsend-webhooks-and-workflows"
   ],
-  "updatedAt": "2026-07-09T20:02:14.052Z"
+  "updatedAt": "2026-07-11T07:20:33.928Z"
 }

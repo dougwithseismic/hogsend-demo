@@ -23,7 +23,8 @@ interface JourneyMeta {
     where?: PropertyCondition[];
   }>;
 
-  suppress: DurationObject;   // declared cool-down (required field; see note)
+  category?: string;          // email-preference category stamped on this journey's sends (default "journey")
+  suppress: DurationObject;   // min-gap between sends, enforced at send time (0 disables)
 }
 ```
 
@@ -101,16 +102,43 @@ exitOn: [
 ],
 ```
 
+### `category` (optional)
+
+The email-preference category stamped on **every** `sendEmail` this journey
+fires — it OVERRIDES the template's own `category` at each send site, exactly as
+the built-in `journey` default already does. Set it to gate the whole journey's
+sends on a specific opt-in/opt-out list (e.g. `category: "product-updates"`), so a
+recipient who opted out of that list never receives the series.
+
+Boot-validated fail-closed against the email-list namespace (same check as
+template categories):
+
+- a defined **topic** list, or a reserved built-in (`transactional` / `journey`)
+  → OK;
+- an **unknown** category → **throws** (it would silently default to opt-in and
+  un-gate suppression);
+- a **channel** list (`in_app`, a connector channel) → **throws** (a channel
+  gates a transport, not an email topic);
+- a defined **opt-in** list excluded via `ENABLED_LISTS` → **throws**; an excluded
+  **opt-out** list → **warns**.
+
+Omit it and the journey keeps the `journey` default.
+
 ### `suppress`
 
-A **required** `DurationObject` field declaring an intended cool-down before
-re-entry. Note: the engine's enrollment gates do NOT currently read `suppress` —
-actual re-entry timing is enforced by `entryLimit` + `entryPeriod` (above). It is
-stored as journey metadata and surfaced on the admin journeys API. Treat it as
-the declarative cool-down you pair with `entryLimit` (e.g.
-`entryLimit: "once_per_period"`, `entryPeriod: days(7)`, `suppress: hours(12)`);
-use `hours(0)` on `"unlimited"` test journeys. Because it is required, always set
-it — `hours(0)` when you mean "none".
+A **required** `DurationObject` — the minimum time between sends within this
+journey, **enforced at send time** in the tracked mailer. A send that lands
+inside the gap is skipped (`journey_suppressed`): no provider call, no
+`email_sends` row. The gap is measured per recipient across **all** enrollments
+of the journey (not per-enrollment), so a re-enrollment inside the window is
+still gapped. This is a per-send min-gap, distinct from re-entry timing —
+`entryLimit` + `entryPeriod` gate whether a user *enrolls*; `suppress` gates
+whether an enrolled run's *send* fires. Pair the two (e.g.
+`entryLimit: "once_per_period"`, `entryPeriod: days(7)`, `suppress: hours(12)`).
+`days(0)` / `hours(0)` **disables** it — use that on `"unlimited"` test journeys
+and on `ctx.digest` journeys (the digest already collapses the sends, so a
+non-zero suppress would fight the rolling re-enrollment). Because it is required,
+always set it — `hours(0)` when you mean "none".
 
 ### `enabled`
 
