@@ -1229,6 +1229,10 @@ function sentCampaign(opts: {
   const startedMs = daysAgo(opts.sentDaysAgo);
   const completedMs = startedMs + int(3, 25) * MIN;
   return {
+    // Explicit id so a sent broadcast can be named as an attribution SCOPE on
+    // the credit ledger (attribution_credits.campaign_id → campaigns.id → name)
+    // — a link.clicked touch that credits this campaign resolves to its name.
+    id: randomUUID(),
     name: opts.name,
     status: "sent",
     audienceKind: opts.audienceKind,
@@ -2023,6 +2027,67 @@ async function main() {
     firedConversions.push(...ret);
   }
 
+  // Attribution SCOPE (plan §1.2/1.3): stamp each credit with the journey or
+  // campaign whose touch earned it, so Studio Impact breaks revenue down by
+  // journey and by campaign — not only by channel. A journey email click
+  // (email.link_clicked) credits the journey that sent it, weighted by
+  // enrolment so the big activation + credits journeys drive the most; a
+  // broadcast-link click (link.clicked) credits its campaign by real
+  // campaigns.id (Impact resolves the name); an ad landing (campaign.arrived)
+  // stays unscoped. Decided once per touch id so all eight models agree.
+  const SCOPE_JOURNEY_IDS = new Set([
+    "activation-connect-repo",
+    "activation-first-review",
+    "credits-topup-nudge",
+    "credits-dunning",
+    "expansion-seats",
+    "winback-repo-quiet",
+  ]);
+  const journeyScopePool = JOURNEYS.filter((j) =>
+    SCOPE_JOURNEY_IDS.has(j.id),
+  ).flatMap((j) =>
+    Array.from({ length: Math.max(1, Math.round(j.enrolled / 200)) }, () => j),
+  );
+  const campaignScopePool = campaignRows.filter((c) => c.status === "sent");
+  const hashId = (s: string) => {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return h;
+  };
+  type TouchScope = {
+    journeyId: string | null;
+    campaignId: string | null;
+    templateKey: string | null;
+  };
+  const touchScope = new Map<string, TouchScope>();
+  const scopeForTouch = (touch: AttributionTouchpoint): TouchScope => {
+    const cached = touchScope.get(touch.id);
+    if (cached) return cached;
+    let scope: TouchScope = {
+      journeyId: null,
+      campaignId: null,
+      templateKey: null,
+    };
+    const h = hashId(touch.id);
+    if (touch.event === "email.link_clicked" && journeyScopePool.length > 0) {
+      const j = journeyScopePool[h % journeyScopePool.length]!;
+      scope = {
+        journeyId: j.id,
+        campaignId: null,
+        templateKey: j.templates[h % j.templates.length] ?? null,
+      };
+    } else if (touch.event === "link.clicked" && campaignScopePool.length > 0) {
+      const c = campaignScopePool[h % campaignScopePool.length]!;
+      scope = {
+        journeyId: null,
+        campaignId: c.id ?? null,
+        templateKey: c.templateKey ?? null,
+      };
+    }
+    touchScope.set(touch.id, scope);
+    return scope;
+  };
+
   const ATTR_WINDOW_MS = 90 * DAY;
   const creditRows: (typeof attributionCredits.$inferInsert)[] = [];
   for (const conv of firedConversions) {
@@ -2039,6 +2104,7 @@ async function main() {
       for (const credit of credits) {
         const touch = byId.get(credit.touchpointId);
         if (!touch) continue;
+        const scope = scopeForTouch(touch);
         creditRows.push({
           conversionId: conv.id,
           model,
@@ -2052,6 +2118,9 @@ async function main() {
               ? Math.round(credit.weight * conv.value * 100) / 100
               : null,
           currency: conv.value != null ? conv.currency : null,
+          journeyId: scope.journeyId,
+          campaignId: scope.campaignId,
+          templateKey: scope.templateKey,
           convertedAt: conv.occurredAt,
         });
       }
