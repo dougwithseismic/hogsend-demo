@@ -2,8 +2,10 @@ import { createHogsendClient, type HogsendClient } from "@hogsend/engine";
 import { discordActions } from "@hogsend/plugin-discord";
 import { telegramActions } from "@hogsend/plugin-telegram";
 import { buckets } from "./buckets/index.js";
+import { conversions } from "./conversions/index.js";
 import { destinations } from "./destinations/index.js";
 import { templates } from "./emails/index.js";
+import { funnels } from "./funnels/index.js";
 import { journeys } from "./journeys/index.js";
 import { lists } from "./lists/index.js";
 
@@ -32,6 +34,8 @@ export function createClient(): HogsendClient {
     buckets,
     lists,
     destinations,
+    funnels,
+    conversions,
     email: { templates },
     connectorActions: [...discordActions, ...telegramActions],
   });

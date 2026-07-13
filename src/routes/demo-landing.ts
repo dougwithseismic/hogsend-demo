@@ -111,6 +111,16 @@ const CARDS: { n: string; title: string; body: string }[] = [
     title: "Managed links",
     body: "Short links with tracked clicks in the Links view — every click is a first-party event a journey can react to.",
   },
+  {
+    n: "07",
+    title: "Deal funnels",
+    body: "Forgeline's revenue pipeline as an event-native <code>defineFunnel()</code> — workspace → repo connected → activated → subscribed — advancing on the product's own events, no CRM. The funnel view shows reach and drop-off at every stage.",
+  },
+  {
+    n: "08",
+    title: "Revenue & attribution",
+    body: "Subscriptions and credit packs carry real value on the event spine; <code>defineConversion()</code> points feed the Impact view — the same revenue credited across all eight attribution models at once, switch the lens and the numbers recompute instantly.",
+  },
 ];
 
 const cardItems = CARDS.map(
@@ -139,6 +149,11 @@ const ROUTE_STOPS: { n: string; title: string; body: string }[] = [
     title: "Campaigns & Links",
     body: "Broadcast history, scheduled sends you can inspect, and the managed short links with click stats.",
   },
+  {
+    n: "05",
+    title: "Deals & Impact",
+    body: "The revenue board — pipeline by stage, sold in the last 30 days, average order value — and the Impact view crediting that revenue across eight attribution models.",
+  },
 ];
 
 const routeItems = ROUTE_STOPS.map(
@@ -152,7 +167,7 @@ const html = `<!doctype html>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Forgeline — live Hogsend Studio demo</title>
-<meta name="description" content="A live Hogsend Studio running Forgeline, a fictional credit-based dev-tool SaaS. Contacts, lifecycle journeys, tracked emails, campaigns, and multi-channel activity — sign in and click around." />
+<meta name="description" content="A live Hogsend Studio running Forgeline, a fictional credit-based dev-tool SaaS. Contacts, lifecycle journeys, tracked emails, campaigns, revenue and deal funnels, and multi-channel activity — sign in and click around." />
 <meta property="og:title" content="Forgeline — live Hogsend Studio demo" />
 <meta property="og:description" content="A real Hogsend Studio, fully seeded. Shared login on the page — sign in and click around." />
 <meta property="og:url" content="https://demo.hogsend.com" />

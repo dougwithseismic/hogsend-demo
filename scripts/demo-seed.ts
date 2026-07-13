@@ -25,14 +25,23 @@
  */
 import { randomUUID } from "node:crypto";
 import {
+  type AttributionTouchpoint,
+  computeAllModels,
+} from "@hogsend/attribution";
+import { touchpointChannel } from "@hogsend/core";
+import {
+  attributionCredits,
   bucketMemberships,
   campaigns,
   connectorDeliveries,
   contacts,
+  conversions,
+  deals,
   emailPreferences,
   emailSends,
   type FeedBlock,
   feedItems,
+  funnelProgress,
   journeyStates,
   linkClicks,
   links,
@@ -296,6 +305,14 @@ const PLAN_MRR: Record<Plan, () => number> = {
   team: () => 49 * int(3, 14),
   business: () => 199,
   enterprise: () => int(1200, 1900),
+};
+// Credit-pack list prices (USD). The value that lands on a `credits.purchased`
+// event's first-class `value` column so revenue rollups + the attribution
+// ledger have real money to credit (pack size → price).
+const PACK_PRICE: Record<number, number> = {
+  1000: 10,
+  5000: 45,
+  25000: 200,
 };
 
 // --- Registered ids (MUST match the code registries) -----------------------
@@ -885,11 +902,18 @@ const evt = (
   event: string,
   properties: Record<string, unknown>,
   daysAgoVal: number,
+  money?: { value: number; currency?: string },
 ) => {
   eventRows.push({
+    // Explicit id so revenue/touchpoint rows can be linked (conversions.event_id
+    // FK, funnel_progress/attribution_credits event refs) without a round-trip.
+    id: randomUUID(),
     userId: contact.externalId,
     event,
     properties: { ...properties, source: "demo" },
+    // First-class revenue spine (0.44): a real column, SQL-aggregable and
+    // credited by the attribution ledger — not buried in the properties bag.
+    ...(money ? { value: money.value, currency: money.currency ?? "USD" } : {}),
     occurredAt: at(NOW - daysAgoVal * DAY),
   });
 };
@@ -918,17 +942,16 @@ for (const u of people) {
       "subscription.started",
       { plan: u.plan },
       recentDaysAgo(firstDays || WINDOW_DAYS),
+      { value: Number(u.properties.mrr) || PLAN_MRR[u.plan]() },
     );
   }
   if (Number(u.properties.credits_purchased_total) > 0) {
     const packs = int(1, 2);
     for (let p = 0; p < packs; p++) {
-      evt(
-        u,
-        "credits.purchased",
-        { pack: pick([1000, 5000, 25000]) },
-        recentDaysAgo(WINDOW_DAYS),
-      );
+      const pack = pick([1000, 5000, 25000]);
+      evt(u, "credits.purchased", { pack }, recentDaysAgo(WINDOW_DAYS), {
+        value: PACK_PRICE[pack] ?? 0,
+      });
     }
   }
 
@@ -1023,6 +1046,66 @@ for (let i = 0; i < NPS_COUNT; i++) {
     [int(0, 6), 10], // detractors
   ]);
   evt(u, "feedback.submitted", { value }, recentDaysAgo(WINDOW_DAYS, 1.3));
+}
+
+// ---------------------------------------------------------------------------
+// 5b. Attribution touchpoints (0.44). Seed a genuine click PATH before each
+// converter's first paid event so the multi-model attribution ledger has real
+// touches to credit — the ledger is then computed with the actual
+// @hogsend/attribution engine (never fabricated weights). Only click/action-
+// grade events count as touchpoints (TOUCHPOINT_EVENT_CLASSES); opens are
+// excluded by design, so we don't seed them here.
+// ---------------------------------------------------------------------------
+const CONVERSION_EVENTS = new Set([
+  "subscription.started",
+  "credits.purchased",
+]);
+/** userKey → the contact's seeded touchpoint path, ascending by time. */
+const attributionPaths = new Map<string, AttributionTouchpoint[]>();
+{
+  const firstConvMs = new Map<string, number>();
+  for (const row of eventRows) {
+    if (!CONVERSION_EVENTS.has(row.event) || row.value == null) continue;
+    const t = (row.occurredAt as Date).getTime();
+    const prev = firstConvMs.get(row.userId);
+    if (prev == null || t < prev) firstConvMs.set(row.userId, t);
+  }
+  const firstSeenByKey = new Map(
+    people.map((u) => [u.externalId, u.firstSeenMs] as const),
+  );
+  for (const [userKey, convMs] of firstConvMs) {
+    const firstSeen = firstSeenByKey.get(userKey) ?? convMs - 45 * DAY;
+    // 2–3 ordered touches in the 30 days before the first conversion, never
+    // before the contact existed: ad landing → email click → maybe a link.
+    const spanStart = Math.max(firstSeen, convMs - 30 * DAY);
+    const span = Math.max(DAY, convMs - spanStart);
+    const steps: Array<{ event: string; frac: number }> = [
+      { event: "campaign.arrived", frac: 0.05 },
+      { event: "email.link_clicked", frac: 0.55 },
+    ];
+    if (chance(0.5)) steps.push({ event: "link.clicked", frac: 0.85 });
+    const path: AttributionTouchpoint[] = [];
+    for (const step of steps) {
+      const channel = touchpointChannel(step.event);
+      if (!channel) continue;
+      const occurredAt = at(Math.round(spanStart + span * step.frac));
+      const id = randomUUID();
+      eventRows.push({
+        id,
+        userId: userKey,
+        event: step.event,
+        properties: { source: "demo" },
+        occurredAt,
+      });
+      path.push({
+        id,
+        event: step.event,
+        channel,
+        occurredAt: occurredAt.getTime(),
+      });
+    }
+    if (path.length > 0) attributionPaths.set(userKey, path);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1763,6 +1846,75 @@ async function main() {
     ),
   );
 
+  // 2b) Deals projection (the event-native `forgeline-pipeline` funnel). The
+  // Studio Deals / funnel / revenue views read this table; the engine would
+  // materialize it from `funnel.stage_changed` on live traffic. We write the
+  // same shape it does: provider "events", externalId `<funnelId>:<contactId>`,
+  // canonicalStage = the funnel's OWN stage id, paying customers `sold` (the
+  // "won" milestone) valued from their MRR, dormant free repos `lost`. Contact
+  // ids are DB-random, so map externalId → id after the contacts insert.
+  const contactIdByExternal = new Map<string, string>();
+  for (const row of await db
+    .select({ id: contacts.id, externalId: contacts.externalId })
+    .from(contacts)
+    .where(like(contacts.externalId, "demo_%"))) {
+    if (row.externalId) contactIdByExternal.set(row.externalId, row.id);
+  }
+  const FUNNEL_ID = "forgeline-pipeline";
+  const STAGE_RANK: Record<string, number> = {
+    workspace_created: 0,
+    repo_connected: 1,
+    activated: 2,
+    subscribed: 3,
+  };
+  const dealRows: (typeof deals.$inferInsert)[] = [];
+  for (const u of people) {
+    const contactId = contactIdByExternal.get(u.externalId);
+    if (!contactId) continue;
+    const repos = Number(u.properties.repos_connected) || 0;
+    const builds = Number(u.properties.builds_run_total) || 0;
+    const created = at(u.firstSeenMs);
+    const lastSeen = at(u.lastSeenMs);
+    let stage: string;
+    let value: number | null = null;
+    let soldAt: Date | null = null;
+    let lostAt: Date | null = null;
+    let lastStageAt = lastSeen;
+    if (u.plan !== "free") {
+      stage = "subscribed"; // the "won" milestone → a sold deal
+      value = Number(u.properties.mrr) || null;
+      soldAt = at(u.firstSeenMs + int(1, 14) * DAY);
+      lastStageAt = soldAt;
+    } else if (u.dormant) {
+      stage = "lost";
+      lostAt = lastSeen;
+      lastStageAt = lastSeen;
+    } else if (repos > 0 && builds > 0) {
+      stage = "activated";
+    } else if (repos > 0) {
+      stage = "repo_connected";
+    } else {
+      stage = "workspace_created";
+    }
+    dealRows.push({
+      provider: "events",
+      externalId: `${FUNNEL_ID}:${contactId}`,
+      contactId,
+      funnelId: FUNNEL_ID,
+      stageId: stage,
+      canonicalStage: stage,
+      stageRank: STAGE_RANK[stage] ?? 0,
+      value,
+      currency: value !== null ? "USD" : null,
+      soldAt,
+      lostAt,
+      lastStageAt,
+      createdAt: created,
+      updatedAt: lastStageAt,
+    });
+  }
+  await chunkInsert(dealRows, (batch) => db.insert(deals).values(batch));
+
   // 3) Email preferences
   await chunkInsert(prefRows, (batch) =>
     db.insert(emailPreferences).values(batch),
@@ -1788,6 +1940,125 @@ async function main() {
     eventRows,
     (batch) => db.insert(userEvents).values(batch),
     1000,
+  );
+
+  // 6b) Funnel progress — the event-native projection the Studio funnel
+  // drop-off view reads. First-reach row per (contact, stage), keyed off the
+  // event that reached the stage. Mirrors what the engine writes at ingest.
+  const STAGE_BY_EVENT: Record<string, { stage: string; rank: number }> = {
+    "workspace.created": { stage: "workspace_created", rank: 0 },
+    "repo.connected": { stage: "repo_connected", rank: 1 },
+    "build.passed": { stage: "activated", rank: 2 },
+    "subscription.started": { stage: "subscribed", rank: 3 },
+  };
+  const progressByKeyStage = new Map<
+    string,
+    typeof funnelProgress.$inferInsert
+  >();
+  for (const row of eventRows) {
+    const mapped = STAGE_BY_EVENT[row.event];
+    const contactId = contactIdByExternal.get(row.userId);
+    if (!mapped || !contactId || !row.id) continue;
+    const reachedAt = row.occurredAt as Date;
+    const key = `${row.userId}|${mapped.stage}`;
+    const existing = progressByKeyStage.get(key);
+    if (existing && existing.reachedAt.getTime() <= reachedAt.getTime()) {
+      continue; // keep the FIRST reach
+    }
+    progressByKeyStage.set(key, {
+      contactId,
+      userKey: row.userId,
+      funnelId: FUNNEL_ID,
+      stage: mapped.stage,
+      stageRank: mapped.rank,
+      reachedAt,
+      eventId: row.id,
+    });
+  }
+  const progressRows = [...progressByKeyStage.values()];
+  await chunkInsert(progressRows, (batch) =>
+    db.insert(funnelProgress).values(batch),
+  );
+
+  // 6c) Conversions (fired instances) + the multi-model attribution ledger.
+  // One conversions row per valued conversion event; credits are computed with
+  // the real @hogsend/attribution engine over the §5b touchpoint path, so the
+  // Studio Impact tab shows genuine per-model, per-channel credited revenue.
+  const CONVERSION_DEF: Record<string, string> = {
+    "subscription.started": "subscription-started",
+    "credits.purchased": "credits-purchased",
+  };
+  const conversionRows: (typeof conversions.$inferInsert)[] = [];
+  for (const row of eventRows) {
+    const definitionId = CONVERSION_DEF[row.event];
+    if (!definitionId || row.value == null || !row.id) continue;
+    const contactId = contactIdByExternal.get(row.userId);
+    if (!contactId) continue;
+    conversionRows.push({
+      definitionId,
+      contactId,
+      userKey: row.userId,
+      eventId: row.id,
+      value: row.value,
+      currency: row.currency ?? "USD",
+      occurredAt: row.occurredAt as Date,
+    });
+  }
+  const firedConversions: Array<{
+    id: string;
+    userKey: string;
+    value: number | null;
+    currency: string | null;
+    occurredAt: Date;
+  }> = [];
+  for (let i = 0; i < conversionRows.length; i += 500) {
+    const batch = conversionRows.slice(i, i + 500);
+    const ret = await db.insert(conversions).values(batch).returning({
+      id: conversions.id,
+      userKey: conversions.userKey,
+      value: conversions.value,
+      currency: conversions.currency,
+      occurredAt: conversions.occurredAt,
+    });
+    firedConversions.push(...ret);
+  }
+
+  const ATTR_WINDOW_MS = 90 * DAY;
+  const creditRows: (typeof attributionCredits.$inferInsert)[] = [];
+  for (const conv of firedConversions) {
+    const path = attributionPaths.get(conv.userKey);
+    if (!path) continue;
+    const convMs = conv.occurredAt.getTime();
+    const touchpoints = path.filter(
+      (t) => t.occurredAt <= convMs && t.occurredAt >= convMs - ATTR_WINDOW_MS,
+    );
+    if (touchpoints.length === 0) continue; // no path → stays Unattributed
+    const byId = new Map(touchpoints.map((t) => [t.id, t]));
+    const allModels = computeAllModels(touchpoints, { conversionAt: convMs });
+    for (const [model, credits] of Object.entries(allModels)) {
+      for (const credit of credits) {
+        const touch = byId.get(credit.touchpointId);
+        if (!touch) continue;
+        creditRows.push({
+          conversionId: conv.id,
+          model,
+          touchpointEventId: touch.id,
+          touchpointEvent: touch.event,
+          channel: touch.channel,
+          touchpointAt: new Date(touch.occurredAt),
+          weight: credit.weight,
+          value:
+            conv.value != null
+              ? Math.round(credit.weight * conv.value * 100) / 100
+              : null,
+          currency: conv.value != null ? conv.currency : null,
+          convertedAt: conv.occurredAt,
+        });
+      }
+    }
+  }
+  await chunkInsert(creditRows, (batch) =>
+    db.insert(attributionCredits).values(batch),
   );
 
   // 7) Bucket memberships
@@ -1877,7 +2148,7 @@ async function main() {
   );
 
   console.log(
-    `Inserted: ${people.length} contacts · ${insertedStateIds.length} journey states · ${sendRows.length} email sends · ${eventRows.length} events · ${bucketRows.length} bucket memberships · ${insertedLinkIds.length} email links + ${managedLinkRows.length} managed links / ${clickRows.length} clicks · ${campaignRows.length} campaigns · ${feedRows.length} feed items · ${connectorRows.length} connector deliveries.`,
+    `Inserted: ${people.length} contacts · ${dealRows.length} deals · ${progressRows.length} funnel steps · ${conversionRows.length} conversions · ${creditRows.length} attribution credits · ${insertedStateIds.length} journey states · ${sendRows.length} email sends · ${eventRows.length} events · ${bucketRows.length} bucket memberships · ${insertedLinkIds.length} email links + ${managedLinkRows.length} managed links / ${clickRows.length} clicks · ${campaignRows.length} campaigns · ${feedRows.length} feed items · ${connectorRows.length} connector deliveries.`,
   );
   console.log("Forgeline demo seed complete.");
 }
