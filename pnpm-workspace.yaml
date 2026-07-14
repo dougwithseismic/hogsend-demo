@@ -1,0 +1,19 @@
+# pnpm settings — pnpm 11+ reads these from pnpm-workspace.yaml ONLY
+# (`package.json#pnpm` and most `.npmrc` keys are not honored for them).
+# Not a workspace; the empty `packages` list just marks this dir as the
+# settings root.
+packages: []
+
+# pnpm 11 hard-fails installs/scripts (ERR_PNPM_IGNORED_BUILDS) unless the
+# dependencies that run postinstall build scripts are pre-approved here.
+allowBuilds:
+  "@hatchet-dev/typescript-sdk": true
+  esbuild: true
+  protobufjs: true
+
+# pnpm 11 quarantines packages published <24h ago (minimumReleaseAge).
+# Exempt the first-party packages so same-day @hogsend/* releases install.
+minimumReleaseAgeExclude:
+  - "@hogsend/*"
+  - "create-hogsend"
+  - "hogsend"

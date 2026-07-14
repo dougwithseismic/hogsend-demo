@@ -6,6 +6,7 @@ import { conversions } from "./conversions/index.js";
 import { destinations } from "./destinations/index.js";
 import { templates } from "./emails/index.js";
 import { funnels } from "./funnels/index.js";
+import { Events, Templates } from "./journeys/constants/index.js";
 import { journeys } from "./journeys/index.js";
 import { lists } from "./lists/index.js";
 
@@ -37,6 +38,10 @@ export function createClient(): HogsendClient {
     funnels,
     conversions,
     email: { templates },
+    // Resolve `Templates.X`/`Events.X` in journey source to real values for the
+    // Studio journey graph — exact email previews + stable, join-safe node ids
+    // (0.46.0 fix for wait/digest nodes silently showing zero metrics).
+    journeyConstants: { templates: Templates, events: Events },
     connectorActions: [...discordActions, ...telegramActions],
   });
 }
