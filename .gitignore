@@ -12,3 +12,4 @@ logs
 # personal settings + local journal are not.
 .claude/settings.local.json
 .claude/journal.db
+.claude/worktrees/
