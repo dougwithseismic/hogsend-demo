@@ -1070,8 +1070,10 @@ function buildSendRows(
   // campaign detail funnel and the Impact campaigns table attribute via the
   // campaign_id FK on engine >= 0.51 (0.50 still LIKE-scans the key prefix,
   // so rows carry BOTH). Row counts agree with the stored blast tallies by construction —
-  // exactly `sentCount` delivered-funnel rows + `failedCount` failed rows
-  // (skipped recipients never produced a send row, matching live behavior).
+  // exactly `sentCount` delivered-funnel rows + `failedCount` failed rows,
+  // plus a small `suppressed` slice per blast: on engine >= 0.51 a
+  // policy-suppressed recipient writes a KEYLESS status-`suppressed` row at
+  // dispatch (hogsend#580), which the campaign stats surface as `skipped`.
   const campaignSendRows: (typeof emailSends.$inferInsert)[] = [];
   for (const c of campaignRows) {
     if (c.status !== "sent" || !c.id || !c.completedAt) continue;
@@ -1105,6 +1107,35 @@ function buildSendRows(
         row.messageId = null;
       }
       row.idempotencyKey = `campaign:${c.id}:${u.email}`;
+      row.campaignId = c.id;
+      if (c.subject) row.subject = c.subject;
+      campaignSendRows.push(row);
+    }
+
+    // Policy-suppressed recipients (~2% per blast, min 1): keyless
+    // `suppressed` rows carrying only the campaign FK — never a delivery
+    // funnel, never an idempotency key. Not counted in the stored
+    // sentCount/failedCount tallies, matching live dispatch.
+    const suppressedN = Math.max(1, Math.round(n * 0.02));
+    for (let k = 0; k < suppressedN && n + k < pool.length; k++) {
+      const u = pool[n + k] as Contact;
+      const row = buildSend(
+        {
+          templateKey: c.templateKey ?? "weekly-digest",
+          contact: u,
+          journeyStateId: null,
+        },
+        blastDays + (rand() * 25) / (24 * 60),
+      );
+      row.status = "suppressed";
+      row.sentAt = null;
+      row.deliveredAt = null;
+      row.openedAt = null;
+      row.clickedAt = null;
+      row.bouncedAt = null;
+      row.complainedAt = null;
+      row.messageId = null;
+      row.idempotencyKey = null;
       row.campaignId = c.id;
       if (c.subject) row.subject = c.subject;
       campaignSendRows.push(row);
