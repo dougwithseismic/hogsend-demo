@@ -26,10 +26,18 @@ export const activationConnectRepo = defineJourney({
     entryLimit: "once",
     suppress: days(0),
     exitOn: [{ event: Events.REPO_CONNECTED }],
+    // Causal instrument: 15% of would-have-entered workspaces are held out so
+    // the Impact tab can report the journey's true conversion lift.
+    holdout: { percent: 15 },
+    version: "v3-welcome-copy-test",
   },
 
   run: async (user, ctx) => {
     const workspace = toStr(user.properties.workspace) ?? "your workspace";
+
+    // Recorded A/B arm — deterministic per user, replayed verbatim within the
+    // enrollment. Unconditional and first, so arm-vs-holdout lift stays causal.
+    const copy = await ctx.variant("welcome-copy", ["control", "benefit-led"]);
 
     // 1. Welcome across email + bell, and flag the new workspace in Discord.
     await sendEmail({
@@ -37,7 +45,10 @@ export const activationConnectRepo = defineJourney({
       userId: user.id,
       journeyStateId: user.stateId,
       template: Templates.WELCOME,
-      subject: "Welcome to Forgeline",
+      subject:
+        copy === "benefit-led"
+          ? "Your first AI review is one repo away"
+          : "Welcome to Forgeline",
       journeyName: user.journeyName,
     });
     await sendFeedItem({

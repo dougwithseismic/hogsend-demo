@@ -22,6 +22,9 @@ export const winbackRepoQuiet = defineJourney({
     entryPeriod: days(30),
     suppress: days(14),
     exitOn: [{ event: Events.BUILD_RUN }],
+    // 15% holdout — winback is the classic "does it actually work?" journey.
+    holdout: { percent: 15 },
+    version: "v2-multichannel-offer",
   },
 
   run: async (user, ctx) => {

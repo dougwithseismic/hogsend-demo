@@ -41,14 +41,17 @@ import {
   emailSends,
   type FeedBlock,
   feedItems,
+  flags,
   funnelProgress,
+  groupMemberships,
+  groups,
   journeyStates,
   linkClicks,
   links,
   trackedLinks,
   userEvents,
 } from "@hogsend/db";
-import { inArray, like } from "drizzle-orm";
+import { inArray, like, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
@@ -315,6 +318,56 @@ const PACK_PRICE: Record<number, number> = {
   25000: 200,
 };
 
+// --- Company book (groups, 0.50) -------------------------------------------
+// One deterministic identity per company: a stable domain (the group's natural
+// key — every member shares it), a billing currency (group revenue is grouped
+// PER CURRENCY, never summed across them — a GBP deal and a USD deal don't
+// add), and firmographics for the group property bag.
+type Currency = "USD" | "EUR" | "GBP";
+type CompanyInfo = {
+  name: string;
+  slug: string;
+  domain: string;
+  currency: Currency;
+  industry: string;
+  region: string;
+};
+const INDUSTRIES = [
+  "devtools",
+  "fintech",
+  "ecommerce",
+  "healthtech",
+  "security",
+  "ai-infra",
+  "media",
+  "logistics",
+] as const;
+const COMPANY_BOOK = new Map<string, CompanyInfo>(
+  COMPANIES.map((name) => {
+    const slug = name.toLowerCase();
+    return [
+      name,
+      {
+        name,
+        slug,
+        domain: `${slug}.${pick(DOMAINS)}`,
+        currency: weighted<Currency>([
+          ["USD", 72],
+          ["EUR", 17],
+          ["GBP", 11],
+        ]),
+        industry: pick(INDUSTRIES),
+        region: pick(["NA", "EU", "APAC"] as const),
+      },
+    ];
+  }),
+);
+const companyOf = (u: Contact): CompanyInfo => {
+  const info = COMPANY_BOOK.get(u.workspace);
+  if (!info) throw new Error(`unknown company ${u.workspace}`);
+  return info;
+};
+
 // --- Registered ids (MUST match the code registries) -----------------------
 const TEMPLATE_META: Record<string, { subject: string; category: string }> = {
   welcome: { subject: "Welcome to Forgeline", category: "transactional" },
@@ -493,8 +546,10 @@ const people: Contact[] = Array.from({ length: CONTACT_COUNT }, (_, i) => {
   const first = pick(FIRST);
   const last = pick(LAST);
   const company = pick(COMPANIES);
-  const slug = company.toLowerCase();
-  const domain = `${slug}.${pick(DOMAINS)}`;
+  const info = COMPANY_BOOK.get(company);
+  if (!info) throw new Error(`unknown company ${company}`);
+  const slug = info.slug;
+  const domain = info.domain;
   const handle = `${first}.${last}`.toLowerCase().replace(/[^a-z.]/g, "");
   let email = `${handle}@${domain}`;
   let n = 2;
@@ -631,9 +686,108 @@ type StateMeta = {
   contact: Contact;
   status: string;
   createdMs: number;
+  /** Recorded ctx.variant arm (experiment journeys only). */
+  arm?: string;
 };
 const journeyStateRows: JS[] = [];
 const stateMeta: StateMeta[] = [];
+
+// Impact experiments (0.50): holdout cohorts + a recorded ctx.variant A/B.
+// These MUST mirror the journey metas in src/journeys/* (holdout percent,
+// version label, variant key/arms) — the Studio Impact tab reads holdout
+// config from the registry and cohorts from these rows. The version hashes are
+// seed-era stand-ins for the engine's content fingerprint (fabricated but
+// stable); live enrollments after a deploy simply start their own cohort.
+type ExperimentCfg = {
+  /** Extra `held_out` rows on top of the regular enrollment. */
+  heldOut: number;
+  version: { label: string; hash: string };
+  /** Older enrollments carry the previous shipped version (version story). */
+  priorVersion?: { label: string; hash: string; olderThanDays: number };
+  variant?: { key: string; arms: readonly string[] };
+  /** Post-enrollment credit-purchase rates per cohort — the manufactured but
+   * genuinely MEASURED lift (the Impact math runs on these rows for real). */
+  convert: {
+    treatment: number;
+    heldOut: number;
+    arms?: Record<string, number>;
+  };
+};
+// NOTE on rates: the lift outcome is "≥1 qualifying conversion after
+// enrollment", and the AMBIENT dataset already converts ~55% of any random
+// cohort post-enrollment (subscriptions + credit packs land all over the
+// window). Both cohorts share that base by random assignment; the numbers
+// below are the EXTRA treatment-only purchase probability stacked on top
+// (holdouts get zero extras — their rate IS the ambient counterfactual).
+// Overlap with ambient converters means each p adds roughly 0.45*p pp of
+// measured lift: activation ≈ +8pp (control arm) / +16pp (benefit-led),
+// top-up ≈ +13pp (clear win), winback ≈ +10pp on n=95 (a "likely win").
+const EXPERIMENTS: Record<string, ExperimentCfg> = {
+  "activation-connect-repo": {
+    heldOut: 210,
+    version: { label: "v3-welcome-copy-test", hash: "a3f9c2d47a31" },
+    variant: { key: "welcome-copy", arms: ["control", "benefit-led"] },
+    convert: {
+      treatment: 0.2,
+      heldOut: 0,
+      arms: { control: 0.2, "benefit-led": 0.4 },
+    },
+  },
+  "credits-topup-nudge": {
+    heldOut: 150,
+    version: { label: "v2-telegram-nudge", hash: "b7e14a98d502" },
+    convert: { treatment: 0.35, heldOut: 0 },
+  },
+  "winback-repo-quiet": {
+    heldOut: 95,
+    version: { label: "v2-multichannel-offer", hash: "c58d3e12f940" },
+    priorVersion: {
+      label: "v1-email-only",
+      hash: "9d21b04e6c17",
+      olderThanDays: 60,
+    },
+    convert: { treatment: 0.3, heldOut: 0 },
+  },
+};
+
+// Disjoint experiment cohorts: the lift join is per-USER (any qualifying
+// conversion after enrollment), so a contact who is control in one experiment
+// must never receive another experiment's injected purchases — round-robin
+// reuse would contaminate every control cohort and flatten the measured lift.
+// Reserve non-overlapping slices of the (randomly generated) contact pool for
+// the experiment journeys; everything else keeps the shared cursor. Overlap
+// between an experiment slice and a NON-experiment journey is harmless (those
+// journeys inject nothing).
+const expSlices = (() => {
+  let offset = 0;
+  const map = new Map<string, { i: number; end: number }>();
+  for (const j of JOURNEYS) {
+    const exp = EXPERIMENTS[j.id];
+    if (!exp) continue;
+    const need = j.enrolled + exp.heldOut;
+    map.set(j.id, { i: offset, end: offset + need });
+    offset += need;
+  }
+  if (offset > people.length) {
+    throw new Error("experiment slices exceed the contact pool");
+  }
+  return map;
+})();
+const drawContact = (journeyId: string): Contact => {
+  const slice = expSlices.get(journeyId);
+  if (!slice) return nextContact();
+  if (slice.i >= slice.end) {
+    throw new Error(`experiment slice exhausted for ${journeyId}`);
+  }
+  return people[slice.i++] as Contact;
+};
+/** Version stamp for an enrollment of `exp` created `createdMs` ago. */
+const versionFor = (exp: ExperimentCfg, createdMs: number) => {
+  const ageDays = (NOW - createdMs) / DAY;
+  return exp.priorVersion && ageDays > exp.priorVersion.olderThanDays
+    ? exp.priorVersion
+    : exp.version;
+};
 
 for (const j of JOURNEYS) {
   // completion% pins `completed`; the rest of the enrollment splits into a
@@ -657,7 +811,7 @@ for (const j of JOURNEYS) {
 
   for (const status of Object.keys(counts)) {
     for (let k = 0; k < counts[status]!; k++) {
-      const u = nextContact();
+      const u = drawContact(j.id);
       let createdMs: number;
       let currentNodeId: string;
       let completedAt: Date | null = null;
@@ -697,15 +851,31 @@ for (const j of JOURNEYS) {
         updatedMs = exitedAt.getTime();
       }
 
+      // Experiment journeys: stamp the shipped version and (for the variant
+      // test) record the ctx.variant arm the way the engine does — once per
+      // enrollment under the reserved __variants__ bag.
+      const exp = EXPERIMENTS[j.id];
+      const version = exp ? versionFor(exp, createdMs) : null;
+      const arm = exp?.variant ? pick(exp.variant.arms) : undefined;
+      const context: Record<string, unknown> = {
+        plan: u.plan,
+        workspace: u.workspace,
+      };
+      if (exp?.variant && arm) {
+        context.__variants__ = { [exp.variant.key]: arm };
+      }
+
       journeyStateRows.push({
         userId: u.externalId,
         userEmail: u.email,
         journeyId: j.id,
         currentNodeId,
         status: status as JS["status"],
-        context: { plan: u.plan, workspace: u.workspace },
+        context,
         errorMessage,
         entryCount: 1,
+        journeyVersionHash: version?.hash ?? null,
+        journeyVersionLabel: version?.label ?? null,
         completedAt,
         exitedAt,
         createdAt: at(createdMs),
@@ -716,6 +886,41 @@ for (const j of JOURNEYS) {
         templates: j.templates,
         contact: u,
         status,
+        createdMs,
+        arm,
+      });
+    }
+  }
+
+  // Held-out control cohort (impact plan §4.1): would-have-entered contacts
+  // diverted at the guard chain's end. Mirrors the engine's insert exactly —
+  // status `held_out`, node "held-out", exitedAt = diversion instant, version
+  // stamped so per-version lift can match control by hash. No sends, ever.
+  const exp = EXPERIMENTS[j.id];
+  if (exp) {
+    for (let k = 0; k < exp.heldOut; k++) {
+      const u = drawContact(j.id);
+      const createdMs = daysAgo(int(2, WINDOW_DAYS));
+      const version = versionFor(exp, createdMs);
+      journeyStateRows.push({
+        userId: u.externalId,
+        userEmail: u.email,
+        journeyId: j.id,
+        currentNodeId: "held-out",
+        status: "held_out" as JS["status"],
+        context: { plan: u.plan, workspace: u.workspace },
+        entryCount: 1,
+        journeyVersionHash: version.hash,
+        journeyVersionLabel: version.label,
+        exitedAt: at(createdMs),
+        createdAt: at(createdMs),
+        updatedAt: at(createdMs),
+      });
+      stateMeta.push({
+        journeyId: j.id,
+        templates: [], // held-out contacts never receive a send
+        contact: u,
+        status: "held_out",
         createdMs,
       });
     }
@@ -911,9 +1116,19 @@ const evt = (
     userId: contact.externalId,
     event,
     properties: { ...properties, source: "demo" },
+    // Group association (0.50): every product event carries the company map,
+    // so group event stats + per-currency group revenue light up in Studio.
+    groups: { company: companyOf(contact).domain },
     // First-class revenue spine (0.44): a real column, SQL-aggregable and
     // credited by the attribution ledger — not buried in the properties bag.
-    ...(money ? { value: money.value, currency: money.currency ?? "USD" } : {}),
+    // Currency defaults to the company's billing currency (per-currency group
+    // revenue is the FX-lens demo).
+    ...(money
+      ? {
+          value: money.value,
+          currency: money.currency ?? companyOf(contact).currency,
+        }
+      : {}),
     occurredAt: at(NOW - daysAgoVal * DAY),
   });
 };
@@ -1049,6 +1264,45 @@ for (let i = 0; i < NPS_COUNT; i++) {
 }
 
 // ---------------------------------------------------------------------------
+// 5a-bis. Experiment outcomes (0.50 Impact). Post-enrollment credit purchases
+// injected at cohort-specific rates — treatment above holdout, the benefit-led
+// variant arm above control — so holdout lift, per-version lift and variant
+// lift are REAL deltas computed by the actual Impact math over these rows
+// (intent-to-treat: every injected purchase lands AFTER the state's createdAt).
+// Held-out contacts also get the `journey.heldout` counterfactual spine event
+// the engine emits at diversion time.
+// ---------------------------------------------------------------------------
+{
+  const injectPurchase = (m: StateMeta) => {
+    const purchasedMs = Math.min(
+      m.createdMs + int(1, 8) * DAY + int(1, 20) * HOUR,
+      NOW - HOUR,
+    );
+    const pack = pick([1000, 5000, 25000]);
+    evt(m.contact, "credits.purchased", { pack }, (NOW - purchasedMs) / DAY, {
+      value: PACK_PRICE[pack] ?? 0,
+    });
+  };
+  for (const m of stateMeta) {
+    const exp = EXPERIMENTS[m.journeyId];
+    if (!exp) continue;
+    if (m.status === "held_out") {
+      evt(
+        m.contact,
+        "journey.heldout",
+        { journey_id: m.journeyId },
+        (NOW - m.createdMs) / DAY,
+      );
+      if (chance(exp.convert.heldOut)) injectPurchase(m);
+      continue;
+    }
+    const p =
+      (m.arm ? exp.convert.arms?.[m.arm] : undefined) ?? exp.convert.treatment;
+    if (chance(p)) injectPurchase(m);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 5b. Attribution touchpoints (0.44). Seed a genuine click PATH before each
 // converter's first paid event so the multi-model attribution ledger has real
 // touches to credit — the ledger is then computed with the actual
@@ -1073,6 +1327,7 @@ const attributionPaths = new Map<string, AttributionTouchpoint[]>();
   const firstSeenByKey = new Map(
     people.map((u) => [u.externalId, u.firstSeenMs] as const),
   );
+  const contactByKey = new Map(people.map((u) => [u.externalId, u] as const));
   for (const [userKey, convMs] of firstConvMs) {
     const firstSeen = firstSeenByKey.get(userKey) ?? convMs - 45 * DAY;
     // 2–3 ordered touches in the 30 days before the first conversion, never
@@ -1090,11 +1345,15 @@ const attributionPaths = new Map<string, AttributionTouchpoint[]>();
       if (!channel) continue;
       const occurredAt = at(Math.round(spanStart + span * step.frac));
       const id = randomUUID();
+      const touchContact = contactByKey.get(userKey);
       eventRows.push({
         id,
         userId: userKey,
         event: step.event,
         properties: { source: "demo" },
+        ...(touchContact
+          ? { groups: { company: companyOf(touchContact).domain } }
+          : {}),
         occurredAt,
       });
       path.push({
@@ -1794,6 +2053,13 @@ async function chunkInsert<T>(
   }
 }
 
+/** Reseed cleanup scope for the native-flag rows (§2d). */
+const DEMO_FLAG_KEYS = [
+  "parallel-pipelines",
+  "review-summary-style",
+  "credits-auto-topup",
+];
+
 async function main() {
   console.log(
     `Forgeline demo seed — window ${WINDOW_DAYS}d — ${people.length} contacts, ${journeyStateRows.length} journey states.`,
@@ -1834,6 +2100,10 @@ async function main() {
     );
   await db.delete(links).where(like(links.createdBy, "%@forgeline.dev"));
   await db.delete(campaigns).where(like(campaigns.idempotencyKey, "demo_%"));
+  // Demo groups carry properties.source = "demo"; deleting a group cascades
+  // its memberships (and deleting contacts below cascades from the other side).
+  await db.delete(groups).where(sql`${groups.properties}->>'source' = 'demo'`);
+  await db.delete(flags).where(inArray(flags.key, DEMO_FLAG_KEYS));
   await db.delete(contacts).where(like(contacts.externalId, "demo_%"));
 
   // 2) Contacts
@@ -1864,6 +2134,127 @@ async function main() {
     .where(like(contacts.externalId, "demo_%"))) {
     if (row.externalId) contactIdByExternal.set(row.externalId, row.id);
   }
+  // 2c) Groups (0.50) — one `company` group per workspace, membership per
+  // contact. Group revenue/event stats come from the `groups` map stamped on
+  // user_events (§5); these rows give Studio the group list + member detail.
+  const membersByCompany = new Map<string, Contact[]>();
+  for (const u of people) {
+    const arr = membersByCompany.get(u.workspace);
+    if (arr) arr.push(u);
+    else membersByCompany.set(u.workspace, [u]);
+  }
+  const PLAN_RANK: Record<Plan, number> = {
+    free: 0,
+    team: 1,
+    business: 2,
+    enterprise: 3,
+  };
+  const groupRows: (typeof groups.$inferInsert)[] = [];
+  const membershipRows: (typeof groupMemberships.$inferInsert)[] = [];
+  for (const [company, members] of membersByCompany) {
+    const info = COMPANY_BOOK.get(company);
+    if (!info) continue;
+    const groupId = randomUUID();
+    const firstSeen = Math.min(...members.map((m) => m.firstSeenMs));
+    const lastSeen = Math.max(...members.map((m) => m.lastSeenMs));
+    const topPlan = members.reduce<Plan>(
+      (best, m) => (PLAN_RANK[m.plan] > PLAN_RANK[best] ? m.plan : best),
+      "free",
+    );
+    const mrr = members.reduce(
+      (s, m) => s + (Number(m.properties.mrr) || 0),
+      0,
+    );
+    groupRows.push({
+      id: groupId,
+      groupType: "company",
+      groupKey: info.domain,
+      displayName: company,
+      properties: {
+        source: "demo", // reseed cleanup marker
+        industry: info.industry,
+        region: info.region,
+        plan: topPlan,
+        seats: members.length,
+        mrr,
+        billing_currency: info.currency,
+      },
+      firstSeenAt: at(firstSeen),
+      lastSeenAt: at(lastSeen),
+      createdAt: at(firstSeen),
+      updatedAt: at(lastSeen),
+    });
+    members.forEach((m, idx) => {
+      const contactId = contactIdByExternal.get(m.externalId);
+      if (!contactId) return;
+      membershipRows.push({
+        groupId,
+        contactId,
+        role: idx === 0 ? "admin" : "member",
+        joinedAt: at(m.firstSeenMs),
+      });
+    });
+  }
+  await chunkInsert(groupRows, (batch) => db.insert(groups).values(batch));
+  await chunkInsert(membershipRows, (batch) =>
+    db.insert(groupMemberships).values(batch),
+  );
+
+  // 2d) Native flags (0.50): the same contracts as src/flags/index.ts, but
+  // with live-looking OPERATOR state (enabled, rollouts, targeting). The boot
+  // reconciler is create-if-absent, so these rows win and persist.
+  await db.insert(flags).values([
+    {
+      key: "parallel-pipelines",
+      origin: "code",
+      name: "Parallel pipeline execution",
+      description:
+        "Run review pipelines for independent PRs concurrently instead of queueing per repo.",
+      type: "boolean",
+      enabled: true,
+      defaultValue: false,
+      targeting: [],
+      rollout: 25,
+      createdAt: at(daysAgo(34)),
+      updatedAt: at(daysAgo(6)),
+    },
+    {
+      key: "review-summary-style",
+      origin: "code",
+      name: "Review summary style",
+      description:
+        "Which format the AI review summary renders in on the PR comment.",
+      type: "multivariate",
+      enabled: true,
+      variants: [
+        { key: "concise", value: "concise", weight: 40 },
+        { key: "detailed", value: "detailed", weight: 40 },
+        { key: "checklist", value: "checklist", weight: 20 },
+      ],
+      defaultValue: "concise",
+      targeting: [],
+      rollout: 100,
+      createdAt: at(daysAgo(58)),
+      updatedAt: at(daysAgo(58)),
+    },
+    {
+      key: "credits-auto-topup",
+      origin: "code",
+      name: "Credits auto top-up",
+      description:
+        "Offer automatic credit-pack purchase when the balance hits zero (paid plans only).",
+      type: "boolean",
+      enabled: true,
+      defaultValue: false,
+      targeting: [
+        { type: "property", property: "plan", operator: "neq", value: "free" },
+      ],
+      rollout: 60,
+      createdAt: at(daysAgo(12)),
+      updatedAt: at(daysAgo(2)),
+    },
+  ]);
+
   const FUNNEL_ID = "forgeline-pipeline";
   const STAGE_RANK: Record<string, number> = {
     workspace_created: 0,
@@ -1909,7 +2300,7 @@ async function main() {
       canonicalStage: stage,
       stageRank: STAGE_RANK[stage] ?? 0,
       value,
-      currency: value !== null ? "USD" : null,
+      currency: value !== null ? companyOf(u).currency : null,
       soldAt,
       lostAt,
       lastStageAt,
@@ -2217,7 +2608,7 @@ async function main() {
   );
 
   console.log(
-    `Inserted: ${people.length} contacts · ${dealRows.length} deals · ${progressRows.length} funnel steps · ${conversionRows.length} conversions · ${creditRows.length} attribution credits · ${insertedStateIds.length} journey states · ${sendRows.length} email sends · ${eventRows.length} events · ${bucketRows.length} bucket memberships · ${insertedLinkIds.length} email links + ${managedLinkRows.length} managed links / ${clickRows.length} clicks · ${campaignRows.length} campaigns · ${feedRows.length} feed items · ${connectorRows.length} connector deliveries.`,
+    `Inserted: ${people.length} contacts · ${groupRows.length} groups / ${membershipRows.length} memberships · ${dealRows.length} deals · ${progressRows.length} funnel steps · ${conversionRows.length} conversions · ${creditRows.length} attribution credits · ${insertedStateIds.length} journey states (${stateMeta.filter((m) => m.status === "held_out").length} held out) · ${sendRows.length} email sends · ${eventRows.length} events · ${bucketRows.length} bucket memberships · ${insertedLinkIds.length} email links + ${managedLinkRows.length} managed links / ${clickRows.length} clicks · ${campaignRows.length} campaigns · ${feedRows.length} feed items · ${connectorRows.length} connector deliveries · 3 flags.`,
   );
   console.log("Forgeline demo seed complete.");
 }

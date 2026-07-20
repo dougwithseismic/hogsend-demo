@@ -5,6 +5,7 @@ import { buckets } from "./buckets/index.js";
 import { conversions } from "./conversions/index.js";
 import { destinations } from "./destinations/index.js";
 import { templates } from "./emails/index.js";
+import { flags } from "./flags/index.js";
 import { funnels } from "./funnels/index.js";
 import { Events, Templates } from "./journeys/constants/index.js";
 import { journeys } from "./journeys/index.js";
@@ -37,6 +38,7 @@ export function createClient(): HogsendClient {
     destinations,
     funnels,
     conversions,
+    flags,
     email: { templates },
     // Resolve `Templates.X`/`Events.X` in journey source to real values for the
     // Studio journey graph — exact email previews + stable, join-safe node ids

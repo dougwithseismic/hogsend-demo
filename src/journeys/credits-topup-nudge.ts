@@ -21,6 +21,9 @@ export const creditsTopupNudge = defineJourney({
     entryPeriod: days(30),
     suppress: days(7),
     exitOn: [{ event: Events.CREDITS_PURCHASED }],
+    // 15% holdout — the Impact tab reads top-up lift straight off this cohort.
+    holdout: { percent: 15 },
+    version: "v2-telegram-nudge",
   },
 
   run: async (user, ctx) => {
