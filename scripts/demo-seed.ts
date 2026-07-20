@@ -1064,21 +1064,68 @@ function buildSendRows(
     }
   });
 
+  // Campaign blasts (§7b): every SENT campaign gets REAL email_sends rows
+  // keyed `campaign:<id>:<email>` — the deterministic idempotency key IS the
+  // campaign attribution (there is no campaign FK read-path): the Studio
+  // campaign detail funnel and the Impact campaigns table both LIKE-scan that
+  // prefix. Row counts agree with the stored blast tallies by construction —
+  // exactly `sentCount` delivered-funnel rows + `failedCount` failed rows
+  // (skipped recipients never produced a send row, matching live behavior).
+  const campaignSendRows: (typeof emailSends.$inferInsert)[] = [];
+  for (const c of campaignRows) {
+    if (c.status !== "sent" || !c.id || !c.completedAt) continue;
+    const blastDays = (NOW - (c.completedAt as Date).getTime()) / DAY;
+    const failed = c.failedCount ?? 0;
+    const n = (c.sentCount ?? 0) + failed;
+    // Unique recipients per blast: deterministic shuffle, take the first n.
+    const pool = [...people];
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(rand() * (i + 1));
+      [pool[i], pool[j]] = [pool[j]!, pool[i]!];
+    }
+    for (let k = 0; k < n && k < pool.length; k++) {
+      const u = pool[k] as Contact;
+      const row = buildSend(
+        {
+          templateKey: c.templateKey ?? "weekly-digest",
+          contact: u,
+          journeyStateId: null,
+        },
+        blastDays + (rand() * 25) / (24 * 60), // inside the ~25min blast window
+      );
+      if (k < failed) {
+        row.status = "failed";
+        row.sentAt = null;
+        row.deliveredAt = null;
+        row.openedAt = null;
+        row.clickedAt = null;
+        row.bouncedAt = null;
+        row.complainedAt = null;
+        row.messageId = null;
+      }
+      row.idempotencyKey = `campaign:${c.id}:${u.email}`;
+      if (c.subject) row.subject = c.subject;
+      campaignSendRows.push(row);
+    }
+  }
+
   // Standalone: recurring weekly digest (bulk) + transactional one-offs.
+  // Fill up to TOTAL_SENDS *including* the campaign blasts above.
   const STANDALONE_MIX: readonly (readonly [string, number])[] = [
     ["weekly-digest", 56],
     ["magic-link", 18],
     ["credits-receipt", 15],
     ["welcome", 11],
   ];
-  while (intents.length < TOTAL_SENDS) {
+  const fillTarget = Math.max(0, TOTAL_SENDS - campaignSendRows.length);
+  while (intents.length < fillTarget) {
     intents.push({
       templateKey: weighted(STANDALONE_MIX),
       contact: pick(people),
       journeyStateId: null,
     });
   }
-  if (intents.length > TOTAL_SENDS) intents.length = TOTAL_SENDS;
+  if (intents.length > fillTarget) intents.length = fillTarget;
 
   // Deterministic Fisher-Yates shuffle so recency buckets aren't template-biased.
   for (let i = intents.length - 1; i > 0; i--) {
@@ -1086,8 +1133,9 @@ function buildSendRows(
     [intents[i], intents[j]] = [intents[j]!, intents[i]!];
   }
 
-  // Recency buckets tuned to the overview tiles: 24h≈210, 7d≈1,540, 30d≈6,700.
-  return intents.map((intent, i) => {
+  // Recency buckets tuned to the overview tiles: 24h≈210, 7d≈1,540, 30d≈6,700
+  // (campaign blasts land on their own real blast dates on top of these).
+  const nonCampaign = intents.map((intent, i) => {
     let sentDaysAgo: number;
     if (i < 210) sentDaysAgo = rand();
     else if (i < 1540) sentDaysAgo = 1 + rand() * 6;
@@ -1095,6 +1143,7 @@ function buildSendRows(
     else sentDaysAgo = 30 + recentDaysAgo(WINDOW_DAYS - 30, 1.4);
     return buildSend(intent, sentDaysAgo);
   });
+  return [...nonCampaign, ...campaignSendRows];
 }
 
 // ---------------------------------------------------------------------------
@@ -1408,7 +1457,7 @@ for (const b of BUCKETS) {
 }
 
 // ---------------------------------------------------------------------------
-// 7. Tracked links + link clicks (~40 links, ~1,800 clicks)
+// 7. Tracked links + link clicks (~120 links, ~5,400 clicks)
 // ---------------------------------------------------------------------------
 type TL = typeof trackedLinks.$inferInsert;
 const LINK_CAMPAIGNS: {
@@ -1426,11 +1475,25 @@ const LINK_CAMPAIGNS: {
   { url: "https://forgeline.dev/dashboard" },
   { url: "https://forgeline.dev/settings/seats" },
   { url: "https://forgeline.dev/refer" },
+  {
+    url: "https://forgeline.dev/settings/seats?src=email",
+    event: "seats.upgrade_clicked",
+    eventProperties: { intent: "expand" },
+  },
+  { url: "https://forgeline.dev/docs/quickstart" },
+  { url: "https://forgeline.dev/docs/ci-integration" },
+  { url: "https://forgeline.dev/docs/review-rules" },
+  { url: "https://forgeline.dev/changelog" },
+  { url: "https://forgeline.dev/blog/parallel-reviews" },
+  { url: "https://forgeline.dev/settings/notifications" },
+  { url: "https://forgeline.dev/reports/weekly" },
 ];
 // Each link gets a click count (a few campaign links are popular); the same
 // count drives the link_clicks rows so `clickCount` and the click funnel agree.
-const linkClickCounts: number[] = Array.from({ length: 40 }, () => int(10, 80));
-const trackedLinkRows: TL[] = Array.from({ length: 40 }, (_, i) => {
+const linkClickCounts: number[] = Array.from({ length: 120 }, () =>
+  int(10, 80),
+);
+const trackedLinkRows: TL[] = Array.from({ length: 120 }, (_, i) => {
   const c = LINK_CAMPAIGNS[i % LINK_CAMPAIGNS.length]!;
   return {
     source: "demo-email",
@@ -1687,7 +1750,7 @@ const campaignRows: CampaignRow[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// 7c. Managed links (Studio "Links" view — ~15 links, ~4,500 clicks)
+// 7c. Managed links (Studio "Links" + "QR codes" views — ~32 links + QR rows)
 // ---------------------------------------------------------------------------
 // A managed link is a `links` row plus ONE `tracked_links` row pointing back
 // via `link_id` (the Studio view sums `click_count` on read; the detail view
@@ -1703,6 +1766,11 @@ type ManagedLinkCfg = {
   clicks: number;
   createdDaysAgo: number;
   archived?: boolean;
+  /** QR scans for this link — lands on a SECOND tracked row with source
+   * "qr" (the shape `ensureQrTrackedLink` creates), which is what the
+   * Studio QR codes view + the per-link QR subtotal read. Omit → a 60%
+   * chance of a modest organic scan count. 0 = explicitly no QR. */
+  qrScans?: number;
 };
 
 const MANAGED_LINKS: ManagedLinkCfg[] = [
@@ -1847,6 +1915,165 @@ const MANAGED_LINKS: ManagedLinkCfg[] = [
     clicks: 208,
     createdDaysAgo: 105,
     archived: true,
+    qrScans: 0,
+  },
+  // Print / IRL surfaces — QR-heavy by nature.
+  {
+    label: "Conference booth — QR to demo",
+    url: "https://forgeline.dev/demo?src=devconf",
+    campaign: "devconf-2026",
+    source: "studio",
+    type: "public",
+    clicks: 44,
+    createdDaysAgo: 52,
+    qrScans: 612,
+  },
+  {
+    label: "Sticker pack — docs QR",
+    url: "https://forgeline.dev/docs/quickstart?src=sticker",
+    campaign: "swag",
+    source: "studio",
+    type: "public",
+    clicks: 12,
+    createdDaysAgo: 74,
+    qrScans: 289,
+  },
+  {
+    label: "Meetup slide — credits promo QR",
+    url: "https://forgeline.dev/billing/credits?promo=meetup",
+    campaign: "community",
+    source: "studio",
+    type: "public",
+    clicks: 9,
+    createdDaysAgo: 21,
+    qrScans: 174,
+  },
+  // Content fan-out.
+  {
+    label: "Blog — how we review 10k PRs",
+    url: "https://forgeline.dev/blog/reviewing-10k-prs",
+    campaign: "content",
+    source: "studio",
+    type: "public",
+    clicks: 486,
+    createdDaysAgo: 41,
+  },
+  {
+    label: "Blog — CI queue deep dive",
+    url: "https://forgeline.dev/blog/ci-queue-deep-dive",
+    campaign: "content",
+    source: "studio",
+    type: "public",
+    clicks: 311,
+    createdDaysAgo: 68,
+  },
+  {
+    label: "YouTube — 2.0 walkthrough",
+    url: "https://www.youtube.com/watch?v=fl2walkthru",
+    campaign: "launch-week",
+    source: "studio",
+    type: "public",
+    clicks: 273,
+    createdDaysAgo: 11,
+  },
+  {
+    label: "Changelog — parallel reviews",
+    url: "https://forgeline.dev/changelog/parallel-reviews",
+    campaign: "changelog",
+    source: "studio",
+    type: "public",
+    clicks: 158,
+    createdDaysAgo: 18,
+  },
+  {
+    label: "Changelog — review rules v2",
+    url: "https://forgeline.dev/changelog/review-rules-v2",
+    campaign: "changelog",
+    source: "studio",
+    type: "public",
+    clicks: 132,
+    createdDaysAgo: 39,
+  },
+  {
+    label: "Docs — CI integration",
+    url: "https://forgeline.dev/docs/ci-integration",
+    campaign: "docs",
+    source: "studio",
+    type: "public",
+    clicks: 297,
+    createdDaysAgo: 88,
+  },
+  {
+    label: "Docs — review rules",
+    url: "https://forgeline.dev/docs/review-rules",
+    campaign: "docs",
+    source: "studio",
+    type: "public",
+    clicks: 244,
+    createdDaysAgo: 83,
+  },
+  {
+    label: "X — parallel reviews thread",
+    url: "https://x.com/forgelinedev/status/1948812734402118400",
+    campaign: "social",
+    source: "studio",
+    type: "public",
+    clicks: 191,
+    createdDaysAgo: 17,
+  },
+  {
+    label: "LinkedIn — Corewave case study",
+    url: "https://www.linkedin.com/posts/forgeline-corewave-case",
+    campaign: "social",
+    source: "studio",
+    type: "public",
+    clicks: 87,
+    createdDaysAgo: 59,
+  },
+  {
+    label: "Newsletter sponsor — DevWeekly",
+    url: "https://forgeline.dev/?src=devweekly",
+    campaign: "sponsorship",
+    source: "studio",
+    type: "public",
+    clicks: 402,
+    createdDaysAgo: 30,
+  },
+  {
+    label: "Podcast — Ship It ep. 84",
+    url: "https://forgeline.dev/?src=shipit",
+    campaign: "sponsorship",
+    source: "studio",
+    type: "public",
+    clicks: 156,
+    createdDaysAgo: 66,
+  },
+  {
+    label: "Referral — Discord regulars",
+    url: "https://forgeline.dev/refer?src=discord",
+    campaign: "referrals",
+    source: "referral",
+    type: "public",
+    clicks: 128,
+    createdDaysAgo: 44,
+  },
+  {
+    label: "Trial extension — Sundeck",
+    url: "https://forgeline.dev/billing/renew?ext=14d",
+    campaign: null,
+    source: "studio",
+    type: "personal",
+    clicks: 4,
+    createdDaysAgo: 7,
+  },
+  {
+    label: "Seats quote — Aperture",
+    url: "https://forgeline.dev/settings/seats?quote=aperture",
+    campaign: null,
+    source: "studio",
+    type: "personal",
+    clicks: 5,
+    createdDaysAgo: 3,
   },
 ];
 
@@ -1889,6 +2116,33 @@ for (const m of MANAGED_LINKS) {
     updatedAt: at(createdMs),
   });
   managedClickPlan.push({ trackedLinkId, clicks: m.clicks, createdMs });
+
+  // QR scans: a SECOND tracked row with source "qr" per link — the exact
+  // shape `ensureQrTrackedLink` creates (distinctId copied so a personal
+  // link's scans stitch the same subject). Scan hits reuse the ordinary
+  // click pipeline, so `link_clicks` rows land under the qr row.
+  const qrScans =
+    m.qrScans ?? (m.archived ? 0 : chance(0.6) ? int(12, 220) : 0);
+  if (qrScans > 0) {
+    const qrTrackedId = randomUUID();
+    const qrCreatedMs = createdMs + int(1, 72) * HOUR;
+    managedTrackedRows.push({
+      id: qrTrackedId,
+      linkId,
+      emailSendId: null,
+      distinctId,
+      source: "qr",
+      originalUrl: m.url,
+      clickCount: qrScans,
+      createdAt: at(qrCreatedMs),
+      updatedAt: at(qrCreatedMs),
+    });
+    managedClickPlan.push({
+      trackedLinkId: qrTrackedId,
+      clicks: qrScans,
+      createdMs: qrCreatedMs,
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -2608,7 +2862,7 @@ async function main() {
   );
 
   console.log(
-    `Inserted: ${people.length} contacts · ${groupRows.length} groups / ${membershipRows.length} memberships · ${dealRows.length} deals · ${progressRows.length} funnel steps · ${conversionRows.length} conversions · ${creditRows.length} attribution credits · ${insertedStateIds.length} journey states (${stateMeta.filter((m) => m.status === "held_out").length} held out) · ${sendRows.length} email sends · ${eventRows.length} events · ${bucketRows.length} bucket memberships · ${insertedLinkIds.length} email links + ${managedLinkRows.length} managed links / ${clickRows.length} clicks · ${campaignRows.length} campaigns · ${feedRows.length} feed items · ${connectorRows.length} connector deliveries · 3 flags.`,
+    `Inserted: ${people.length} contacts · ${groupRows.length} groups / ${membershipRows.length} memberships · ${dealRows.length} deals · ${progressRows.length} funnel steps · ${conversionRows.length} conversions · ${creditRows.length} attribution credits · ${insertedStateIds.length} journey states (${stateMeta.filter((m) => m.status === "held_out").length} held out) · ${sendRows.length} email sends · ${eventRows.length} events · ${bucketRows.length} bucket memberships · ${insertedLinkIds.length} email links + ${managedLinkRows.length} managed links (incl. QR rows) / ${clickRows.length} clicks · ${campaignRows.length} campaigns · ${feedRows.length} feed items · ${connectorRows.length} connector deliveries · 3 flags.`,
   );
   console.log("Forgeline demo seed complete.");
 }
