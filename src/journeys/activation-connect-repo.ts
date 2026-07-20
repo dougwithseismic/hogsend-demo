@@ -30,6 +30,9 @@ export const activationConnectRepo = defineJourney({
     // the Impact tab can report the journey's true conversion lift.
     holdout: { percent: 15 },
     version: "v3-welcome-copy-test",
+    // Scope the Impact lift readout to the credits conversion (instead of
+    // "any conversion definition"), so ambient subscription noise stays out.
+    goal: "credits-purchased",
   },
 
   run: async (user, ctx) => {
