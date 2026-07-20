@@ -1423,6 +1423,33 @@ const attributionPaths = new Map<string, AttributionTouchpoint[]>();
 // ---------------------------------------------------------------------------
 type BM = typeof bucketMemberships.$inferInsert;
 const bucketRows: BM[] = [];
+// Buckets whose entry is a journey trigger (expansion-seats ← power-teams,
+// winback-repo-quiet ← dormant-repos) must also emit the `bucket:entered:<id>`
+// event the engine's join path fires, so the Studio EventPicker shows a nonzero
+// occurrence count next to the trigger. Names mirror `src/buckets/*` meta.name.
+const TRIGGER_BUCKET_NAMES: Record<string, string> = {
+  "power-teams": "Power teams",
+  "dormant-repos": "Dormant repos",
+};
+// Power-teams entrants (active) — the cohort that later fires `seat.added`.
+const powerTeamEntries: { u: Contact; enteredMs: number }[] = [];
+// Mirror the engine's `emitBucketTransition` property shape (bucket-emit.ts).
+const emitBucketEntered = (u: Contact, bucketId: string, enteredMs: number) => {
+  const name = TRIGGER_BUCKET_NAMES[bucketId];
+  if (!name) return;
+  evt(
+    u,
+    `bucket:entered:${bucketId}`,
+    {
+      bucketId,
+      bucketName: name,
+      userId: u.externalId,
+      transition: "entered",
+      entryCount: 1,
+    },
+    (NOW - enteredMs) / DAY,
+  );
+};
 for (const b of BUCKETS) {
   for (let k = 0; k < b.active; k++) {
     const u = nextContact();
@@ -1438,6 +1465,8 @@ for (const b of BUCKETS) {
       source: "demo",
       context: { plan: u.plan, workspace: u.workspace },
     });
+    emitBucketEntered(u, b.id, enteredMs);
+    if (b.id === "power-teams") powerTeamEntries.push({ u, enteredMs });
   }
   for (let k = 0; k < b.left; k++) {
     const u = nextContact();
@@ -1455,7 +1484,38 @@ for (const b of BUCKETS) {
       source: "demo",
       context: { plan: u.plan, workspace: u.workspace },
     });
+    // A `left` member also entered once — emit its entry event too.
+    emitBucketEntered(u, b.id, enteredMs);
   }
+}
+
+// `seat.added` — expansion-seats' exitOn. ~60 power-team workspaces add a seat
+// AFTER entering the bucket, so the EventPicker shows a nonzero exit count.
+let seatAdded = 0;
+for (const { u, enteredMs } of powerTeamEntries) {
+  if (seatAdded >= 60) break;
+  if (!chance(0.4)) continue;
+  const addedMs = Math.min(enteredMs + int(1, 20) * DAY, NOW - DAY);
+  evt(
+    u,
+    "seat.added",
+    { seats: int(1, 5), plan: u.plan },
+    (NOW - addedMs) / DAY,
+  );
+  seatAdded++;
+}
+
+// `test.signup` — the smoke-test trigger for the bundled test-onboarding
+// journey. A recency-weighted trickle so the EventPicker bolt reads nonzero.
+const signupCount = int(40, 60);
+for (let k = 0; k < signupCount; k++) {
+  const u = nextContact();
+  evt(
+    u,
+    "test.signup",
+    { plan: u.plan, workspace: u.workspace },
+    recentDaysAgo(WINDOW_DAYS),
+  );
 }
 
 // ---------------------------------------------------------------------------
