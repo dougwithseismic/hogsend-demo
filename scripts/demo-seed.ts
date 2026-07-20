@@ -1067,8 +1067,9 @@ function buildSendRows(
   // Campaign blasts (§7b): every SENT campaign gets REAL email_sends rows
   // keyed `campaign:<id>:<email>` — the deterministic idempotency key IS the
   // campaign attribution (there is no campaign FK read-path): the Studio
-  // campaign detail funnel and the Impact campaigns table both LIKE-scan that
-  // prefix. Row counts agree with the stored blast tallies by construction —
+  // campaign detail funnel and the Impact campaigns table attribute via the
+  // campaign_id FK on engine >= 0.51 (0.50 still LIKE-scans the key prefix,
+  // so rows carry BOTH). Row counts agree with the stored blast tallies by construction —
   // exactly `sentCount` delivered-funnel rows + `failedCount` failed rows
   // (skipped recipients never produced a send row, matching live behavior).
   const campaignSendRows: (typeof emailSends.$inferInsert)[] = [];
@@ -1104,6 +1105,7 @@ function buildSendRows(
         row.messageId = null;
       }
       row.idempotencyKey = `campaign:${c.id}:${u.email}`;
+      row.campaignId = c.id;
       if (c.subject) row.subject = c.subject;
       campaignSendRows.push(row);
     }
@@ -2580,6 +2582,13 @@ async function main() {
     insertedStateIds.push(...ret.map((r) => r.id));
   }
 
+  // 4b) Campaigns (broadcast history + upcoming scheduled sends) — MUST land
+  // before the email sends: blast rows reference campaigns.id via the
+  // campaign_id FK.
+  await chunkInsert(campaignRows, (batch) =>
+    db.insert(campaigns).values(batch),
+  );
+
   // 5) Email sends (journey-tied + standalone → TOTAL_SENDS)
   const sendRows = buildSendRows(insertedStateIds);
   await chunkInsert(sendRows, (batch) => db.insert(emailSends).values(batch));
@@ -2834,11 +2843,6 @@ async function main() {
     clickRows,
     (batch) => db.insert(linkClicks).values(batch),
     1000,
-  );
-
-  // 8d) Campaigns (broadcast history + upcoming scheduled sends).
-  await chunkInsert(campaignRows, (batch) =>
-    db.insert(campaigns).values(batch),
   );
 
   // 9) Feed items — link ~85% to a journey state.

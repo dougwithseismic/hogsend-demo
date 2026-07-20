@@ -24,6 +24,9 @@ export const creditsTopupNudge = defineJourney({
     // 15% holdout — the Impact tab reads top-up lift straight off this cohort.
     holdout: { percent: 15 },
     version: "v2-telegram-nudge",
+    // Scope the Impact lift readout to the credits conversion (instead of
+    // "any conversion definition"), so ambient subscription noise stays out.
+    goal: "credits-purchased",
   },
 
   run: async (user, ctx) => {
