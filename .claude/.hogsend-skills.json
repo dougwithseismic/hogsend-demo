@@ -1,5 +1,5 @@
 {
-  "cliVersion": "0.50.0",
+  "cliVersion": "0.52.1",
   "skills": [
     "hogsend-authoring-buckets",
     "hogsend-authoring-campaigns",
@@ -19,5 +19,5 @@
     "hogsend-migrate",
     "hogsend-webhooks-and-workflows"
   ],
-  "updatedAt": "2026-07-20T18:25:30.471Z"
+  "updatedAt": "2026-07-26T05:36:20.882Z"
 }
