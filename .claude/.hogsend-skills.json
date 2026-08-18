@@ -1,5 +1,23 @@
 {
-  "cliVersion": "0.0.0",
-  "skills": [],
-  "updatedAt": "2026-08-13T07:24:21.064Z"
+  "cliVersion": "0.64.0",
+  "skills": [
+    "hogsend-authoring-buckets",
+    "hogsend-authoring-campaigns",
+    "hogsend-authoring-destinations",
+    "hogsend-authoring-emails",
+    "hogsend-authoring-flags",
+    "hogsend-authoring-journey-blueprints",
+    "hogsend-authoring-journeys",
+    "hogsend-authoring-lists",
+    "hogsend-cli",
+    "hogsend-client-sdk",
+    "hogsend-conditions",
+    "hogsend-database",
+    "hogsend-deploy",
+    "hogsend-extending",
+    "hogsend-integrate",
+    "hogsend-migrate",
+    "hogsend-webhooks-and-workflows"
+  ],
+  "updatedAt": "2026-08-18T14:22:31.183Z"
 }
